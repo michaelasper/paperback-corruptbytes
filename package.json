@@ -1,0 +1,42 @@
+{
+  "name": "vortex-scans-extension",
+  "private": true,
+  "description": "Paperback extension for Vortex Scans.",
+  "homepage": "https://michaelasper.github.io/paperback-corruptbytes/",
+  "bugs": {
+    "url": "https://github.com/michaelasper/paperback-corruptbytes/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/michaelasper/paperback-corruptbytes.git"
+  },
+  "type": "module",
+  "scripts": {
+    "tsc": "tsc",
+    "lint": "oxlint --type-aware --fix",
+    "lint:check": "oxlint --type-aware --deny-warnings",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "conformance": "npm run tsc && npm run lint:check && npm run format:check",
+    "bundle": "paperback-cli bundle",
+    "serve": "paperback-cli serve",
+    "dev": "paperback-cli serve --watch",
+    "logcat": "paperback-cli logcat",
+    "test": "tsx --test src/VortexScans/*.test.ts",
+    "test:live": "VORTEX_LIVE_TESTS=1 tsx --test src/VortexScans/live.test.ts",
+    "test:parsers": "tsx --test src/VortexScans/parsers.test.ts"
+  },
+  "devDependencies": {
+    "@paperback/toolchain": "^1.0.0-alpha.92",
+    "@paperback/types": "^1.0.0-alpha.92",
+    "cheerio": "^1.2.0",
+    "oxfmt": "^0.61.0",
+    "oxlint": "^1.76.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "tsx": "^4.20.6",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

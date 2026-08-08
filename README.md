@@ -1,12 +1,6 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="src/VortexScans/static/icon.png">
-    <source media="(prefers-color-scheme: light)" srcset="src/VortexScans/static/icon.png">
-    <img alt="Vortex Scans" src="src/VortexScans/static/icon.png" width="104">
-  </picture>
-
   <h1>Paperback CorruptBytes</h1>
-  <p>Read Vortex Scans in Paperback—including chapters you legitimately purchased—with first-party sign-in and paid-access awareness.</p>
+  <p>Paperback 0.9 extensions maintained by CorruptBytes.</p>
 </div>
 
 <div align="center">
@@ -18,7 +12,7 @@
 
 <div align="center">
   <a href="#quick-start">Quick Start</a> &middot;
-  <a href="#features">Features</a> &middot;
+  <a href="#available-extensions">Extensions</a> &middot;
   <a href="#development">Development</a> &middot;
   <a href="https://github.com/michaelasper/paperback-corruptbytes/issues/new?labels=bug">Report Bug</a>
 </div>
@@ -27,29 +21,36 @@
 
 ## Why Paperback CorruptBytes?
 
-Vortex Scans serves free and paid chapters through different access paths, and purchased chapters require a valid Vortex session. This extension is for Paperback 0.9.x readers who want the full catalog, accurate lock state, and access to content already unlocked on their own Vortex account.
+This repository is a home for independent Paperback sources that need careful protocol handling, strong regression coverage, and ongoing maintenance. It is intentionally site-neutral: each source lives in its own directory and ships through one installable repository.
 
-## Features
+## Available Extensions
 
-- Opens Vortex’s Google or Discord sign-in page and reads legitimately purchased chapters without handling your password.
+| Extension                                                                      | Status | Highlights                                                                                                     |
+| ------------------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------- |
+| <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans** | Alpha  | Discover, advanced search, comics, novels, lock and price state, and access to legitimately purchased chapters |
+
+### Vortex Scans
+
+Vortex serves free and paid chapters through different access paths. The extension understands both while respecting the access state returned for the signed-in account.
+
+- Opens Vortex’s Google or Discord sign-in page without handling your password.
+- Reads chapters Vortex reports as accessible, including chapters already purchased by the account.
 - Shows paid chapter prices and lock state, with a setting to include or hide unavailable chapters.
-- Supports comic images and sanitized novel HTML while preserving deterministic page order.
+- Supports comic images and sanitized novel HTML with deterministic page order.
 - Provides latest updates, popular titles, recently added series, genres, pagination, and sorting.
 - Searches by title or pasted Vortex URL, with status, type, direction, and include/exclude genre filters.
-- Persists source-scoped session cookies securely, validates the active account, and clears auth state on logout or rejection.
-- Handles Vortex rate limits and Cloudflare challenges without misclassifying ordinary locked responses.
-
-## Scope
-
-The extension reads only content Vortex reports as accessible to the signed-in account. It does not purchase chapters, bypass payment, collect credentials, or make unavailable chapters readable.
+- Keeps first-party session cookies in source-scoped secure state and clears rejected sessions.
+- Handles Vortex rate limits and Cloudflare challenges without confusing ordinary locked responses for challenges.
 
 ## Quick Start
 
 1. Open the [repository installation page][install-page] on the device running Paperback.
-2. Add the repository, then install **Vortex Scans**.
-3. In the extension settings, choose **Sign in to Vortex Scans** and complete Google or Discord sign-in.
+2. Add **Paperback CorruptBytes** as a repository.
+3. Install any extension listed above.
 
-Purchased chapters become readable after Vortex validates the session. Other paid chapters remain visibly locked and must be unlocked on Vortex Scans.
+For Vortex purchased chapters, open the extension settings, choose **Sign in to Vortex Scans**, and complete Google or Discord sign-in. Chapters become readable only after Vortex validates the session; unavailable paid chapters remain visibly locked.
+
+After Vortex returns to its home page, tap **Done** to import the session into the extension. Paperback’s embedded browser does not currently provide a secure external-browser or passkey handoff, so that authentication must finish inside the sign-in view.
 
 ## Install From Source
 
@@ -64,15 +65,15 @@ Open the LAN URL printed by the development server on your Paperback device. The
 
 ## Prerequisites
 
-| Requirement    | Version or purpose                   |
-| -------------- | ------------------------------------ |
-| Paperback      | 0.9.x                                |
-| Vortex account | Required only for purchased chapters |
-| Node.js        | 24 or newer for local development    |
+| Requirement    | Version or purpose                                 |
+| -------------- | -------------------------------------------------- |
+| Paperback      | 0.9.x                                              |
+| Node.js        | 24 or newer for local development                  |
+| Source account | Optional; required only for account-gated features |
 
-## Authentication and Privacy
+## Privacy and Access Boundaries
 
-Authentication stays on Vortex’s own sign-in page. The extension stores only first-party `vortexscans.org` cookies in Paperback secure state, never asks for a password, never creates a bearer token, and does not send session cookies to unrelated hosts.
+Extensions in this repository must not bypass payments, collect credentials, or expose session material to unrelated hosts. Vortex authentication stays on Vortex’s own sign-in page; its extension stores only first-party `vortexscans.org` cookies in Paperback secure state and reads only content Vortex reports as accessible.
 
 ## Development
 
@@ -84,7 +85,9 @@ npm run conformance
 npm run bundle
 ```
 
-The default suite is deterministic and offline-friendly. `npm run test:live` checks the current OAuth providers, anonymous account contract, catalog filters, one readable chapter, and one real locked chapter against Vortex; it never attempts a purchase.
+The default suite runs every extension’s deterministic tests. `npm run test:live` currently checks Vortex’s OAuth providers, anonymous account contract, catalog filters, one readable chapter, and one real locked chapter; it never attempts a purchase.
+
+Each extension belongs in `src/<ExtensionName>/` with its own config, implementation, static assets, and focused tests. Shared repository commands discover all first-level extension directories, so future sources can be added without rebranding the project.
 
 ## Contributing
 

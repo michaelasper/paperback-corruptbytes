@@ -6,6 +6,7 @@ import type { Request, Response } from "@paperback/types";
 import { CloudflareError, VortexInterceptor } from "./interceptor.js";
 
 const originalApplication = globalThis.Application;
+const originalURL = globalThis.URL;
 
 const encode = (value: string): ArrayBuffer => new TextEncoder().encode(value).buffer;
 
@@ -19,7 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  Object.assign(globalThis, { Application: originalApplication });
+  Object.assign(globalThis, { Application: originalApplication, URL: originalURL });
 });
 
 const response = (status: number, headers: Record<string, string> = {}): Response => ({
@@ -60,6 +61,27 @@ describe("VortexInterceptor request headers", () => {
 
     assert.match(intercepted.headers?.accept ?? "", /image\//i);
     assert.doesNotMatch(intercepted.headers?.accept ?? "", /application\/json/i);
+  });
+
+  it("recognizes first-party requests when Paperback provides no browser URL global", async () => {
+    Object.assign(globalThis, { URL: undefined });
+    const interceptor = new VortexInterceptor();
+
+    const intercepted = await interceptor.interceptRequest({
+      url: "https://api.vortexscans.org/api/me",
+      method: "GET",
+    });
+
+    assert.equal(intercepted.headers?.origin, "https://vortexscans.org");
+    assert.match(intercepted.headers?.accept ?? "", /application\/json/i);
+    await assert.rejects(
+      interceptor.interceptResponse(
+        { url: "https://api.vortexscans.org/api/me", method: "GET" },
+        response(403, { "cf-mitigated": "challenge" }),
+        encode("<html><title>Just a moment...</title></html>"),
+      ),
+      (error: unknown) => error instanceof CloudflareError,
+    );
   });
 
   it("does not invent authorization headers", async () => {

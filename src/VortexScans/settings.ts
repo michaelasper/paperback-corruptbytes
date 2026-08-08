@@ -68,7 +68,7 @@ export class VortexSettingsForm extends Form {
         {
           id: "account",
           footer:
-            "Vortex handles Google and Discord sign-in on its own page. " +
+            "Complete Google or Discord sign-in on Vortex’s page, then tap Done after Vortex returns home. " +
             "Paperback stores only the resulting Vortex session cookies; your password is never stored by this extension.",
         },
         [

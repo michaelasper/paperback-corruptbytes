@@ -7,6 +7,7 @@ import { VORTEX_COOKIE_STATE_KEY, VortexCookieInterceptor } from "./cookies.js";
 import { VortexInterceptor } from "./interceptor.js";
 
 const originalApplication = globalThis.Application;
+const originalURL = globalThis.URL;
 
 const sessionCookie = (overrides: Partial<Cookie> = {}): Cookie => ({
   name: "__Secure-vthemeauth.session_token",
@@ -30,7 +31,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  Object.assign(globalThis, { Application: originalApplication });
+  Object.assign(globalThis, { Application: originalApplication, URL: originalURL });
 });
 
 describe("VortexCookieInterceptor", () => {
@@ -95,6 +96,19 @@ describe("VortexCookieInterceptor", () => {
     assert.deepEqual(otherRequest.cookies, {});
     assert.deepEqual(insecureRequest.cookies, {});
     assert.deepEqual(storageRequest.cookies, {});
+  });
+
+  it("injects sessions when Paperback provides no browser URL global", async () => {
+    Object.assign(globalThis, { URL: undefined });
+    const interceptor = new VortexCookieInterceptor();
+    interceptor.setCookie(sessionCookie());
+
+    const request = await interceptor.interceptRequest({
+      url: "https://api.vortexscans.org/api/me",
+      method: "GET",
+    });
+
+    assert.deepEqual(request.cookies, { "__Secure-vthemeauth.session_token": "token" });
   });
 
   it("captures response cookies securely and deletion is persisted", async () => {
@@ -212,6 +226,9 @@ describe("VortexCookieInterceptor", () => {
     // object, then uses only the final interceptor's return value.
     await cookies.interceptRequest(originalRequest);
     const finalRequest = await headers.interceptRequest(originalRequest);
+    assert.deepEqual(finalRequest.cookies, {
+      "__Secure-vthemeauth.session_token": "current-session",
+    });
     await cookies.interceptResponse(
       finalRequest,
       {

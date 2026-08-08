@@ -41,7 +41,7 @@ jobs:
           path: bundles
 
   live:
-    name: Check live Vortex protocol
+    name: Check live extension protocols
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     needs: validate
     runs-on: ubuntu-latest

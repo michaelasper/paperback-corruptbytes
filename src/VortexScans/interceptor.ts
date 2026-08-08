@@ -1,6 +1,7 @@
 import {
   CloudflareError,
   PaperbackInterceptor,
+  URL as PaperbackURL,
   type Request,
   type Response,
 } from "@paperback/types";
@@ -71,8 +72,10 @@ const isVortexHost = (hostname: string): boolean => {
 
 const isVortexRequest = (url: string): boolean => {
   try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" && isVortexHost(parsed.hostname);
+    const parsed = new PaperbackURL(url);
+    return (
+      parsed.protocol.toLowerCase().replace(/:$/, "") === "https" && isVortexHost(parsed.hostname)
+    );
   } catch {
     return false;
   }
@@ -80,7 +83,7 @@ const isVortexRequest = (url: string): boolean => {
 
 const isImageRequest = (url: string): boolean => {
   try {
-    return IMAGE_EXTENSION.test(new URL(url).pathname);
+    return IMAGE_EXTENSION.test(new PaperbackURL(url).path);
   } catch {
     return IMAGE_EXTENSION.test(url);
   }

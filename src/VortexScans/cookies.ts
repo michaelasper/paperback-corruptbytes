@@ -1,5 +1,6 @@
 import {
   CookieStorageInterceptor,
+  URL as PaperbackURL,
   type Cookie,
   type Request,
   type Response,
@@ -55,12 +56,11 @@ const storedCookies = (): Cookie[] => {
 
 const sanitizedDomain = (domain: string): string => domain.trim().replace(/^\.+/, "").toLowerCase();
 
-const trustedCookieUrl = (value: string): URL | undefined => {
+const trustedCookieUrl = (value: string): PaperbackURL | undefined => {
   try {
-    const url = new URL(value);
-    return url.protocol === "https:" && COOKIE_HOSTS.has(url.hostname.toLowerCase())
-      ? url
-      : undefined;
+    const url = new PaperbackURL(value);
+    const protocol = url.protocol.toLowerCase().replace(/:$/, "");
+    return protocol === "https" && COOKIE_HOSTS.has(url.hostname.toLowerCase()) ? url : undefined;
   } catch {
     return undefined;
   }

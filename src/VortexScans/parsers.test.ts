@@ -55,6 +55,37 @@ void test("manga IDs, URLs, dates, and HTML text are safe and deterministic", ()
   );
 });
 
+void test("URL parsing does not depend on browser globals unavailable in Paperback", () => {
+  const browserURL = globalThis.URL;
+  try {
+    Object.assign(globalThis, { URL: undefined });
+
+    assert.equal(
+      safeUrl("https://storage.vortexscans.org/cover.webp"),
+      "https://storage.vortexscans.org/cover.webp",
+    );
+    assert.equal(
+      safeUrl("/images/cover.webp", "https://vortexscans.org"),
+      "https://vortexscans.org/images/cover.webp",
+    );
+    assert.equal(
+      parseMangaList({
+        posts: [
+          {
+            id: 394,
+            slug: "absolute-domination",
+            postTitle: "Absolute Domination",
+            featuredImage: "https://storage.vortexscans.org/cover.webp",
+          },
+        ],
+      })[0]?.imageUrl,
+      "https://storage.vortexscans.org/cover.webp",
+    );
+  } finally {
+    Object.assign(globalThis, { URL: browserURL });
+  }
+});
+
 void test("gore and violence genres are never advertised as suitable for everyone", () => {
   assert.equal(contentRatingForGenres(["Gore"]), ContentRating.MATURE);
   assert.equal(contentRatingForGenres(["violence"]), ContentRating.MATURE);
@@ -128,6 +159,16 @@ void test("manga lists and details preserve Vortex metadata", () => {
     { id: "1", title: "Action" },
     { id: "8", title: "Fantasy" },
   ]);
+
+  const [missingCover] = parseMangaList({
+    posts: [{ id: 395, slug: "missing-cover", postTitle: "Missing Cover" }],
+  });
+  assert.equal(missingCover?.imageUrl, "https://vortexscans.org/favicon.ico");
+  assert.equal(
+    parseMangaDetails({ id: 395, slug: "missing-cover", postTitle: "Missing Cover" }).mangaInfo
+      .thumbnailUrl,
+    "https://vortexscans.org/favicon.ico",
+  );
 });
 
 void test("full chapter lists expose lock semantics and sort/index deterministically", () => {

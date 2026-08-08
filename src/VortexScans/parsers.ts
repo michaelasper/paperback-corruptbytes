@@ -1,5 +1,6 @@
 import {
   ContentRating,
+  URL as PaperbackURL,
   type Chapter,
   type ChapterDetails,
   type MangaInfo,
@@ -19,6 +20,7 @@ import { DOMAIN } from "./network.js";
 const UNSAFE_PROTOCOL = /^[a-z][a-z\d+.-]*:/i;
 const ENCODED_ID_PUNCTUATION = /[!'()*]/g;
 const PLACEHOLDER_CREATOR = /^(?:-|–|—|_|n\/a|na|unknown|updating|tba)$/i;
+const FALLBACK_COVER_URL = `${DOMAIN}/favicon.ico`;
 const BLOCK_TAG =
   /<(?:\/)?(?:address|article|blockquote|div|h[1-6]|li|p|pre|section|tr|ul|ol)\b[^>]*>/gi;
 
@@ -75,8 +77,37 @@ export const safeUrl = (value: unknown, base: string = DOMAIN): string => {
   if (!/^https?:\/\//i.test(raw) && !raw.startsWith("//") && !/^\.?\.?\//.test(raw)) return "";
 
   try {
-    const url = new URL(raw, base);
-    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    const baseUrl = new PaperbackURL(base);
+    const baseProtocol = baseUrl.protocol.toLowerCase().replace(/:$/, "");
+    if (baseProtocol !== "http" && baseProtocol !== "https") return "";
+
+    const authority = `${baseUrl.hostname}${baseUrl.port ? `:${baseUrl.port}` : ""}`;
+    let absolute = raw;
+    if (raw.startsWith("//")) {
+      absolute = `${baseProtocol}:${raw}`;
+    } else if (!/^https?:\/\//i.test(raw)) {
+      const relativeMatch = raw.match(/^([^?#]*)([?#][\s\S]*)?$/);
+      const relativePath = relativeMatch?.[1] ?? "";
+      const suffix = relativeMatch?.[2] ?? "";
+      const basePath = baseUrl.path || "/";
+      const directory = basePath.endsWith("/")
+        ? basePath
+        : basePath.slice(0, basePath.lastIndexOf("/") + 1);
+      const unresolvedPath = relativePath.startsWith("/")
+        ? relativePath
+        : `${directory}${relativePath}`;
+      const segments: string[] = [];
+      for (const segment of unresolvedPath.split("/")) {
+        if (!segment || segment === ".") continue;
+        if (segment === "..") segments.pop();
+        else segments.push(segment);
+      }
+      absolute = `${baseProtocol}://${authority}/${segments.join("/")}${suffix}`;
+    }
+
+    const url = new PaperbackURL(encodeURI(absolute));
+    const protocol = url.protocol.toLowerCase().replace(/:$/, "");
+    if (protocol !== "http" && protocol !== "https") return "";
     return url.toString();
   } catch {
     return "";
@@ -398,7 +429,7 @@ export const parseMangaList = (value: unknown): MangaListItem[] => {
         imageUrl:
           safeUrl(
             firstDefined(manga, ["featuredImage", "cover", "coverUrl", "image", "featured_image"]),
-          ) || "",
+          ) || FALLBACK_COVER_URL,
         subtitle: subtitle || undefined,
         contentRating: contentRatingForManga(manga),
         contentType: type,
@@ -431,9 +462,10 @@ export const parseMangaDetails = (value: unknown, requestedMangaId?: string): So
     firstDefined(manga, ["seriesType", "type", "contentType", "series_type"]),
   );
   const status = mapStatus(firstDefined(manga, ["seriesStatus", "status", "series_status"]));
-  const thumbnailUrl = safeUrl(
-    firstDefined(manga, ["featuredImage", "cover", "coverUrl", "image", "featured_image"]),
-  );
+  const thumbnailUrl =
+    safeUrl(
+      firstDefined(manga, ["featuredImage", "cover", "coverUrl", "image", "featured_image"]),
+    ) || FALLBACK_COVER_URL;
   const author = normalizeCreator(manga.author);
   const artist = normalizeCreator(manga.artist);
   const additionalInfo: Record<string, string> = { slug };

@@ -84,7 +84,7 @@ npm run conformance
 npm run bundle
 ```
 
-The default suite is deterministic and offline-friendly. `npm run test:live` checks the current public catalog, one readable chapter, and one real locked chapter against the live Vortex API; it never attempts a purchase.
+The default suite is deterministic and offline-friendly. `npm run test:live` checks the current OAuth providers, anonymous account contract, catalog filters, one readable chapter, and one real locked chapter against Vortex; it never attempts a purchase.
 
 ## Contributing
 

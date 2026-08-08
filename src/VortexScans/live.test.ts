@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 
 import type { Request, Response } from "@paperback/types";
+import { load } from "cheerio";
 
+import { fetchAccountStatus } from "./auth.js";
 import {
   fetchChapterContent,
   fetchChapterList,
@@ -10,6 +12,7 @@ import {
   fetchPostDetails,
   fetchSearchPage,
 } from "./client.js";
+import { DOMAIN } from "./network.js";
 import {
   parseChapterDetails,
   parseChapterList,
@@ -51,19 +54,41 @@ after(() => {
 });
 
 describe("Vortex live public API", { skip: !live }, () => {
+  it("exposes the OAuth providers and reports an anonymous API session", async () => {
+    const [signInResponse, account] = await Promise.all([
+      fetch(`${DOMAIN}/auth/signin`, { redirect: "follow" }),
+      fetchAccountStatus(),
+    ]);
+    const $ = load(await signInResponse.text());
+    const buttonText = $("button")
+      .toArray()
+      .map((element) => $(element).text().replace(/\s+/g, " ").trim());
+
+    assert.equal(signInResponse.status, 200);
+    assert.ok(buttonText.some((text) => /continue with google/i.test(text)));
+    assert.ok(buttonText.some((text) => /continue with discord/i.test(text)));
+    assert.deepEqual(account, { authenticated: false });
+  });
+
   it("searches the live catalog and loads genres", async () => {
-    const [genres, response] = await Promise.all([
+    const [genres, response, novels, hiatus] = await Promise.all([
       fetchGenres(),
       fetchSearchPage(
         { title: "the dungeon painter", metadata: { direction: ["desc"] } },
         { id: "lastChapterAddedAt", label: "Recently updated" },
         1,
       ),
+      fetchSearchPage({ title: "", metadata: { type: ["NOVEL"] } }, undefined, 1),
+      fetchSearchPage({ title: "", metadata: { status: ["HIATUS"] } }, undefined, 1),
     ]);
     const results = parseMangaList(response);
 
     assert.ok(genres.some((genre) => genre.title === "Action"));
     assert.ok(results.some((item) => item.mangaId.startsWith("the-dungeon-painter@")));
+    assert.ok((novels.posts?.length ?? 0) > 0);
+    assert.ok(novels.posts?.every((post) => post.seriesType === "NOVEL"));
+    assert.ok((hiatus.posts?.length ?? 0) > 0);
+    assert.ok(hiatus.posts?.every((post) => post.seriesStatus === "HIATUS"));
   });
 
   it("reads a free chapter and rejects a current locked chapter", async () => {

@@ -77,7 +77,7 @@ export const SERIES_HTML = `
       <div class="post-content_item"><div class="summary-heading"><h5>Artist(s)</h5></div>
         <div class="summary-content"><div class="artist-content"><a>Yonoki</a></div></div></div>
       <div class="post-content_item"><div class="summary-heading"><h5>Genre(s)</h5></div>
-        <div class="summary-content"><div class="genres-content"><a>Action</a><a>Mature</a></div></div></div>
+        <div class="summary-content"><div class="genres-content"><a>Action</a><a>Mature</a><a>School Life</a></div></div></div>
       <div class="post-status"><div class="post-content_item"><div class="summary-heading"><h5>Status</h5></div>
         <div class="summary-content">Ongoing</div></div></div>
     </div>

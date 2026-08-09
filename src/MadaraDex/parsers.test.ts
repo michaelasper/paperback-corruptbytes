@@ -109,6 +109,11 @@ describe("MadaraDex title and reader parsers", () => {
     assert.equal(result.mangaInfo.contentRating, ContentRating.ADULT);
     assert.equal(result.mangaInfo.synopsis, "A brutal & funny story.");
     assert.equal(result.mangaInfo.shareUrl, "https://madaradex.org/title/savage-hero/");
+    assert.deepEqual(result.mangaInfo.tagGroups?.[0]?.tags, [
+      { id: "Action", title: "Action" },
+      { id: "Mature", title: "Mature" },
+      { id: "School%20Life", title: "School Life" },
+    ]);
   });
 
   it("parses dates deterministically and never fabricates invalid dates", () => {

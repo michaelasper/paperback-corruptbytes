@@ -9,6 +9,7 @@ import { load, type Cheerio, type CheerioAPI } from "cheerio";
 import type { AnyNode } from "domhandler";
 
 import { contentRatingForTags, plainTextFromHtml, sanitizeChapterHtml } from "../shared/html.js";
+import { encodePaperbackIdComponent } from "../shared/ids.js";
 import { resolveHttpsUrl, urlPathSlug } from "../shared/url.js";
 import type { MadaraCard, MadaraCatalogPage, MadaraFilterOptions } from "./models.js";
 import { DOMAIN } from "./network.js";
@@ -213,7 +214,7 @@ export const parseMangaDetails = (html: string, mangaId: string): SourceManga =>
           {
             id: "genres",
             title: "Genres",
-            tags: genres.map((title) => ({ id: title, title })),
+            tags: genres.map((title) => ({ id: encodePaperbackIdComponent(title), title })),
           },
         ],
       }),

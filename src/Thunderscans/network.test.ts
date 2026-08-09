@@ -96,7 +96,7 @@ describe("Thunder network URLs", () => {
 });
 
 describe("Thunder response handling", () => {
-  const install = (status: number, body: string): Request[] => {
+  const install = (status: number, body: string, responseUrl?: string): Request[] => {
     const requests: Request[] = [];
     Object.assign(globalThis, {
       Application: {
@@ -104,7 +104,7 @@ describe("Thunder response handling", () => {
         scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
           requests.push(request);
           return [
-            { url: request.url, status, headers: {}, cookies: [] },
+            { url: responseUrl ?? request.url, status, headers: {}, cookies: [] },
             new TextEncoder().encode(body).buffer,
           ];
         },
@@ -121,6 +121,46 @@ describe("Thunder response handling", () => {
     assert.deepEqual(await fetchJSON(request), { ok: true });
   });
 
+  it("rejects oversized responses before decoding them", async () => {
+    let decodeCalls = 0;
+    install(200, "x".repeat(8 * 1_024 * 1_024 + 1));
+    Object.assign(globalThis.Application, {
+      arrayBufferToUTF8String: (buffer: ArrayBuffer) => {
+        decodeCalls += 1;
+        return new TextDecoder().decode(buffer);
+      },
+    });
+
+    await assert.rejects(
+      fetchText({ url: "https://en-thunderscans.com/api?token=secret", method: "GET" }),
+      /Thunder Scans.*too large/i,
+    );
+    assert.equal(decodeCalls, 0);
+  });
+
+  it("rejects foreign initial requests and redirected responses before decoding", async () => {
+    const initialRequests = install(200, "private");
+    await assert.rejects(
+      fetchText({ url: "https://evil.example/metadata", method: "GET" }),
+      /response URL was not trusted/i,
+    );
+    assert.equal(initialRequests.length, 0);
+
+    let decodeCalls = 0;
+    install(200, "private", "https://evil.example/redirected");
+    Object.assign(globalThis.Application, {
+      arrayBufferToUTF8String: () => {
+        decodeCalls += 1;
+        return "private";
+      },
+    });
+    await assert.rejects(
+      fetchText({ url: "https://en-thunderscans.com/metadata", method: "GET" }),
+      /response URL was not trusted/i,
+    );
+    assert.equal(decodeCalls, 0);
+  });
+
   it("surfaces useful status failures without echoing whole HTML bodies", async () => {
     for (const [status, message] of [
       [401, /sign in/i],
@@ -130,8 +170,13 @@ describe("Thunder response handling", () => {
     ] as const) {
       install(status, `<html>${"private detail ".repeat(100)}</html>`);
       await assert.rejects(
-        fetchText({ url: "https://en-thunderscans.com/private", method: "GET" }),
-        message,
+        fetchText({ url: "https://en-thunderscans.com/private?token=secret", method: "GET" }),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.match(error.message, message);
+          assert.doesNotMatch(error.message, /private detail|token=secret/i);
+          return true;
+        },
       );
     }
   });
@@ -139,8 +184,17 @@ describe("Thunder response handling", () => {
   it("reports malformed JSON with URL context", async () => {
     install(200, "not-json");
     await assert.rejects(
-      fetchJSON({ url: "https://en-thunderscans.com/ajax", method: "POST" }),
-      /parse JSON.*\/ajax/i,
+      fetchJSON({
+        url: "https://en-thunderscans.com/ajax\u0000?token=secret#fragment",
+        method: "POST",
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /parse JSON.*\/ajax/i);
+        assert.doesNotMatch(error.message, /token=secret|fragment/i);
+        assert.equal(error.message.includes("\u0000"), false);
+        return true;
+      },
     );
   });
 });

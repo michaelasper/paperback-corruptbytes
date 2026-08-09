@@ -76,6 +76,41 @@ export const plainTextFromHtml = (value: string): string => {
     .trim();
 };
 
+const isXmlSafeCodePoint = (codePoint: number): boolean => {
+  if (codePoint === 0x09 || codePoint === 0x0a || codePoint === 0x0d) return true;
+  if (codePoint < 0x20 || codePoint > 0x10ffff) return false;
+  if (codePoint >= 0x7f && codePoint <= 0x9f) return false;
+  if (codePoint >= 0xfdd0 && codePoint <= 0xfdef) return false;
+  if ((codePoint & 0xffff) >= 0xfffe) return false;
+  return codePoint <= 0xd7ff || codePoint >= 0xe000;
+};
+
+const xmlSafeText = (value: string): string => {
+  let result = "";
+  for (const character of value) {
+    if (isXmlSafeCodePoint(character.codePointAt(0)!)) result += character;
+  }
+  return result;
+};
+
+const escapeXmlText = (value: string): string =>
+  xmlSafeText(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+
+/** Render trusted API structure while treating every paragraph value as inert text. */
+export const paragraphsToXhtml = (paragraphs: readonly string[]): string => {
+  const body = paragraphs
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${escapeXmlText(paragraph).replace(/\r?\n/g, "<br />")}</p>`)
+    .join("");
+  return `<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>${body}</body></html>`;
+};
+
 /**
  * Produce self-contained XHTML for Paperback's novel reader using a small,
  * explicit element/attribute allow-list.
@@ -111,7 +146,9 @@ export const sanitizeChapterHtml = (content: string, baseUrl: string): string =>
   });
 
   const body = $("body").length ? ($("body").html() ?? "") : ($.root().html() ?? "");
-  return `<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>${body.trim()}</body></html>`;
+  return xmlSafeText(
+    `<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>${body.trim()}</body></html>`,
+  );
 };
 
 /** Derive a conservative Paperback rating from source-provided taxonomy. */

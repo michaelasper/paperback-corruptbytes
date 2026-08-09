@@ -1,10 +1,11 @@
 import type { Cookie } from "@paperback/types";
 
 import { SecureCookieInterceptor } from "../shared/cookies.js";
-import { isHttpsUrlForDomain } from "../shared/url.js";
+import { isHttpsUrlForHosts } from "../shared/url.js";
 
 export const MADARADEX_COOKIE_STATE_KEY = "madaradex.secure_cookies";
 const GENERATION_HEADER = "x-paperback-madaradex-cookie-generation";
+const TRUSTED_HOSTS = new Set(["madaradex.org", "www.madaradex.org", "cdn.madaradex.org"]);
 
 const cookieDomain = (cookie: Cookie): string =>
   cookie.domain.trim().replace(/^\.+/, "").toLowerCase();
@@ -28,7 +29,7 @@ export class MadaraDexCookieInterceptor extends SecureCookieInterceptor {
     super({
       stateKey: MADARADEX_COOKIE_STATE_KEY,
       generationHeader: GENERATION_HEADER,
-      isTrustedRequestUrl: (value) => isHttpsUrlForDomain(value, "madaradex.org"),
+      isTrustedRequestUrl: (value) => isHttpsUrlForHosts(value, TRUSTED_HOSTS),
       isAcceptedCookie: isMadaraDexCookie,
       isSensitiveCookieName: isMadaraRotatingAuthCookieName,
       shouldStripCookieName: isMadaraSensitiveCookieName,

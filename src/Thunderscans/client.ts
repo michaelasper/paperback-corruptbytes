@@ -9,7 +9,7 @@ import type {
   Tag,
 } from "@paperback/types";
 
-import { AsyncKeyedCache } from "../shared/async-cache.js";
+import { AsyncKeyedCache, utf8ByteLength } from "../shared/async-cache.js";
 import type {
   HomeFeedId,
   ParsedHomeFeed,
@@ -41,6 +41,8 @@ import {
 const SERIES_CACHE_TTL_MS = 30_000;
 const HOME_CACHE_TTL_MS = 45_000;
 const GENRE_CACHE_TTL_MS = 30 * 60_000;
+const SERIES_CACHE_MAX_BYTES = 2 * 1_024 * 1_024;
+const HOME_CACHE_MAX_BYTES = 2 * 1_024 * 1_024;
 const MAX_CHAPTER_URLS = 2_048;
 
 const ajaxHtml = (body: string): string | undefined => {
@@ -60,10 +62,14 @@ export class ThunderClient {
   private readonly seriesCache = new AsyncKeyedCache<string, string>({
     ttlMs: SERIES_CACHE_TTL_MS,
     maxEntries: 64,
+    maxWeight: SERIES_CACHE_MAX_BYTES,
+    weigh: utf8ByteLength,
   });
   private readonly homeCache = new AsyncKeyedCache<string, string>({
     ttlMs: HOME_CACHE_TTL_MS,
     maxEntries: 1,
+    maxWeight: HOME_CACHE_MAX_BYTES,
+    weigh: utf8ByteLength,
   });
   private readonly genreCache = new AsyncKeyedCache<string, Tag[]>({
     ttlMs: GENRE_CACHE_TTL_MS,
@@ -95,10 +101,11 @@ export class ThunderClient {
       };
     }
 
-    const html = await this.homeCache.get("home", () =>
-      fetchText({ url: `${DOMAIN}/`, method: "GET" }),
+    return this.homeCache.getMapped(
+      "home",
+      () => fetchText({ url: `${DOMAIN}/`, method: "GET" }),
+      (html) => parseHomeFeed(html, feed),
     );
-    return parseHomeFeed(html, feed);
   }
 
   async getGenres(): Promise<Tag[]> {
@@ -133,13 +140,19 @@ export class ThunderClient {
   }
 
   async getMangaDetails(mangaId: string): Promise<SourceManga> {
-    return parseMangaDetails(await this.getSeriesHtml(mangaId), mangaId);
+    return this.seriesCache.getMapped(
+      mangaId,
+      () => fetchText({ url: buildMangaUrl(mangaId), method: "GET" }),
+      (html) => parseMangaDetails(html, mangaId),
+    );
   }
 
   async getChapters(sourceManga: SourceManga, showLocked: boolean): Promise<Chapter[]> {
-    const chapters = parseChapterList(await this.getSeriesHtml(sourceManga.mangaId), sourceManga, {
-      showLocked,
-    });
+    const chapters = await this.seriesCache.getMapped(
+      sourceManga.mangaId,
+      () => fetchText({ url: buildMangaUrl(sourceManga.mangaId), method: "GET" }),
+      (html) => parseChapterList(html, sourceManga, { showLocked }),
+    );
     this.rememberChapterUrls(chapters);
     return chapters;
   }
@@ -200,12 +213,6 @@ export class ThunderClient {
   invalidateAuthenticationCaches(): void {
     this.seriesCache.clear();
     this.chapterUrls.clear();
-  }
-
-  private getSeriesHtml(mangaId: string): Promise<string> {
-    return this.seriesCache.get(mangaId, () =>
-      fetchText({ url: buildMangaUrl(mangaId), method: "GET" }),
-    );
   }
 
   private chapterKey(chapter: Chapter): string {

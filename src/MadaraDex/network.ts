@@ -5,6 +5,8 @@ import {
   type SortingOption,
 } from "@paperback/types";
 
+import { fetchSourceText, scheduleTextResponse, SourceHttpError } from "../shared/http.js";
+import { isHttpsUrlForHosts } from "../shared/url.js";
 import type { MadaraSearchMetadata } from "./models.js";
 
 export const DOMAIN = "https://madaradex.org";
@@ -123,27 +125,26 @@ export const buildRefreshRequest = (): Request => ({
   },
 });
 
-const responseBody = (buffer: ArrayBuffer): string => {
-  try {
-    return Application.arrayBufferToUTF8String(buffer);
-  } catch {
-    return new TextDecoder().decode(buffer);
-  }
-};
+const RESPONSE_HOSTS = new Set(["madaradex.org", "www.madaradex.org"]);
+const RESPONSE_OPTIONS = {
+  sourceName: "MadaraDex",
+  isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
+    isHttpsUrlForHosts(requestUrl, RESPONSE_HOSTS) &&
+    isHttpsUrlForHosts(responseUrl, RESPONSE_HOSTS),
+} as const;
 
-export const fetchTextResponse = async (request: Request) => {
-  const [response, buffer] = await Application.scheduleRequest(request);
-  return { response, body: responseBody(buffer) };
-};
+export const fetchTextResponse = async (request: Request) =>
+  scheduleTextResponse(request, RESPONSE_OPTIONS);
 
 export const fetchText = async (request: Request): Promise<string> => {
-  const { response, body } = await fetchTextResponse(request);
-  if (response.status === 404) throw new Error(`MadaraDex content not found: ${request.url}`);
-  if (response.status === 429) {
-    throw new Error("MadaraDex rate limit reached. Please wait and try again.");
+  try {
+    return await fetchSourceText(request, RESPONSE_OPTIONS);
+  } catch (error: unknown) {
+    if (!(error instanceof SourceHttpError)) throw error;
+    if (error.status === 404) throw new Error("MadaraDex content not found.");
+    if (error.status === 429) {
+      throw new Error("MadaraDex rate limit reached. Please wait and try again.");
+    }
+    throw new Error(`MadaraDex request failed with status ${error.status}.`);
   }
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(`MadaraDex request failed with status ${response.status}.`);
-  }
-  return body;
 };

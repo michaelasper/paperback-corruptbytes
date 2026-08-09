@@ -86,6 +86,8 @@ describe("shared URL engine", () => {
 
     assert.equal(isHttpsUrlForHosts("https://reader.example/", hosts), true);
     assert.equal(isHttpsUrlForHosts("https://api.reader.example/v1", hosts), true);
+    assert.equal(isHttpsUrlForHosts("https://reader.example:443/", hosts), true);
+    assert.equal(isHttpsUrlForHosts("https://reader.example:444/", hosts), false);
     assert.equal(isHttpsUrlForHosts("https://cdn.reader.example/page", hosts), false);
     assert.equal(isHttpsUrlForHosts("http://reader.example/", hosts), false);
     assert.equal(isHttpsUrlForHosts("https://reader.example.evil.test/", hosts), false);
@@ -93,6 +95,8 @@ describe("shared URL engine", () => {
 
   it("can scope a source to its apex domain and real subdomains", () => {
     assert.equal(isHttpsUrlForDomain("https://reader.example/", "reader.example"), true);
+    assert.equal(isHttpsUrlForDomain("https://reader.example:443/", "reader.example"), true);
+    assert.equal(isHttpsUrlForDomain("https://reader.example:444/", "reader.example"), false);
     assert.equal(isHttpsUrlForDomain("https://cdn.reader.example/page", "reader.example"), true);
     assert.equal(isHttpsUrlForDomain("http://reader.example/", "reader.example"), false);
     assert.equal(isHttpsUrlForDomain("https://reader.example.evil.test/", "reader.example"), false);

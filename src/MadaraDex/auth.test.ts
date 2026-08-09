@@ -17,6 +17,8 @@ const cookie = (name: string, value: string, lifetimeMs: number = 60_000): Cooki
 
 class MemoryStore implements MadaraCookieStore {
   cookies: Cookie[] = [];
+  invalidations = 0;
+  acceptances = 0;
 
   setCookie(value: Cookie): void {
     this.cookies = this.cookies.filter(
@@ -36,26 +38,39 @@ class MemoryStore implements MadaraCookieStore {
         candidate.path !== value.path,
     );
   }
+
+  invalidateSensitiveCookies(): void {
+    this.invalidations += 1;
+    this.cookies = this.cookies.filter((candidate) => candidate.name !== "mdx_auth");
+  }
+
+  acceptSensitiveCookies(): void {
+    this.acceptances += 1;
+  }
 }
 
 let requests: Request[];
 let nextAuth: Cookie | undefined;
+let nextResponseUrl: string | undefined;
+let nextResponseBody: ArrayBuffer;
 
 beforeEach(() => {
   requests = [];
   nextAuth = cookie("mdx_auth", "auth-one", 6 * 60 * 60_000);
+  nextResponseUrl = undefined;
+  nextResponseBody = new ArrayBuffer(0);
   Object.assign(globalThis, {
     Application: {
       scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
         requests.push(request);
         return [
           {
-            url: request.url,
+            url: nextResponseUrl ?? request.url,
             status: 200,
             headers: {},
             cookies: nextAuth ? [nextAuth] : [],
           },
-          new ArrayBuffer(0),
+          nextResponseBody,
         ];
       },
     },
@@ -117,5 +132,79 @@ describe("MadaraDex ephemeral authentication", () => {
     nextAuth = undefined;
     await assert.rejects(manager.ensureAuthenticated(), /did not issue mdx_auth/i);
     assert.equal(manager.isAuthenticated(), false);
+  });
+
+  it("rejects auth cookies from a foreign final response URL", async () => {
+    const store = new MemoryStore();
+    const manager = new MdxAuthManager(store, { randomBytes: () => new Uint8Array(16) });
+    nextResponseUrl = "https://evil.example/auth";
+
+    await assert.rejects(manager.ensureAuthenticated(), /response URL was not trusted/i);
+    assert.equal(
+      store.cookies.some(({ name }) => name === "mdx_auth"),
+      false,
+    );
+    assert.equal(manager.isAuthenticated(), false);
+  });
+
+  it("rejects oversized auth responses before accepting cookies", async () => {
+    const store = new MemoryStore();
+    const manager = new MdxAuthManager(store, { randomBytes: () => new Uint8Array(16) });
+    nextResponseBody = new ArrayBuffer(256 * 1_024 + 1);
+
+    await assert.rejects(manager.ensureAuthenticated(), /MadaraDex authentication.*too large/i);
+    assert.equal(
+      store.cookies.some(({ name }) => name === "mdx_auth"),
+      false,
+    );
+    assert.equal(manager.isAuthenticated(), false);
+  });
+
+  it("times out refreshes, clears the in-flight slot, and blocks stale auth", async () => {
+    const store = new MemoryStore();
+    let resolvePending: ((value: [Response, ArrayBuffer]) => void) | undefined;
+    Object.assign(globalThis, {
+      Application: {
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> =>
+          new Promise((resolve) => {
+            requests.push(request);
+            resolvePending = resolve;
+          }),
+      },
+    });
+    const manager = new MdxAuthManager(store, {
+      randomBytes: () => new Uint8Array(16),
+      refreshTimeoutMs: 5,
+    });
+
+    await assert.rejects(manager.ensureAuthenticated(), /refresh timed out/i);
+    assert.equal(
+      store.cookies.some((value) => value.name === "mdx_auth"),
+      false,
+    );
+    assert.ok(store.invalidations >= 2);
+
+    // A late completion from the timed-out request must not restore auth.
+    resolvePending?.([
+      {
+        url: "https://madaradex.org/wp-admin/admin-ajax.php",
+        status: 200,
+        headers: {},
+        cookies: [cookie("mdx_auth", "late")],
+      },
+      new ArrayBuffer(0),
+    ]);
+    assert.equal(manager.isAuthenticated(), false);
+
+    Object.assign(globalThis, {
+      Application: {
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => [
+          { url: request.url, status: 200, headers: {}, cookies: [cookie("mdx_auth", "fresh")] },
+          new ArrayBuffer(0),
+        ],
+      },
+    });
+    await manager.ensureAuthenticated();
+    assert.equal(manager.isAuthenticated(), true);
   });
 });

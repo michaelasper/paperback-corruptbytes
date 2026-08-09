@@ -34,7 +34,7 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 ## Highlights
 
 - **Read the formats each site actually publishes.** Comic image readers and novel HTML readers preserve source order and reject unsafe content.
-- **Keep existing library progress.** Each adapter preserves the IDs already present in Paperback exports, including Mgeko slugs, MadaraDex post IDs, and fractional chapter IDs.
+- **Keep existing library progress.** Each adapter preserves the IDs already present in Paperback exports, including Atsumaru’s opaque scanlation IDs, Mgeko slugs, MadaraDex post IDs, and fractional chapter IDs.
 - **Use chapters you legitimately purchased.** First-party sessions expose only content the signed-in site reports as accessible; unavailable chapters remain visibly locked.
 - **Browse complete catalogs.** Discovery feeds, pagination, genres, sorting, advanced filters, title search, and pasted series URLs follow each site’s real protocol.
 - **Use the right authentication model for each site.** Account sign-in stays on the source’s own page; MadaraDex reader authorization refreshes automatically; Mgeko needs no account.
@@ -45,10 +45,18 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 | Extension                                                                        | Status | Best for                                                                                                                |
 | -------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| <img src="src/Atsumaru/static/icon.png" alt="" width="28"> **Atsumaru**          | Alpha  | Comics, novels, all anonymous discovery rails, 2,408-tag search, and exported-library chapter compatibility             |
 | <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | Alpha  | Complete Madara discovery/search, exported numeric-ID compatibility, and automatically authorized image readers         |
 | <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | Alpha  | A large safe-mode catalog, detailed range/rating/availability filters, and stable comic reader slugs                    |
 | <img src="src/Thunderscans/static/icon.png" alt="" width="28"> **Thunder Scans** | Alpha  | Comics, novels, complete discovery/search, coin-lock visibility, and chapters already available to your Thunder account |
 | <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans**   | Alpha  | Comics, novels, rich filters, paid-state metadata, and chapters already purchased through Vortex                        |
+
+### Atsumaru
+
+- All 13 anonymous manga discovery rails, live genres, exact Typesense sorting, pasted series URLs, and comic or novel search.
+- Include/exclude filters for 21 genres and 2,408 detailed tags, organized into 17 on-demand groups so the initial form stays fast.
+- Exact case-sensitive manga, chapter, and scanlation IDs—including alternate translations—preserve the exported library’s reading progress.
+- Direct CDN comic pages, escaped XHTML novel chapters, standard-by-default catalog controls with explicit rating filters, and no account requirement.
 
 ### MadaraDex
 
@@ -82,7 +90,7 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 1. Open the [repository installation page][install-page] on the device running Paperback.
 2. Add **paperback-corruptbytes** as a repository.
-3. Install any combination of MadaraDex, Mgeko, Thunder Scans, and Vortex Scans.
+3. Install any combination of Atsumaru, MadaraDex, Mgeko, Thunder Scans, and Vortex Scans.
 
 ## Account-backed chapters
 
@@ -90,7 +98,7 @@ Thunder Scans and Vortex Scans can expose chapters the signed-in site reports as
 
 Paperback’s embedded browser does not currently provide a secure external-browser or passkey handoff. If your normal sign-in depends on a passkey, use another first-party method the source offers inside the embedded view.
 
-MadaraDex does not require a user account. Its short-lived anonymous reader token refreshes automatically; the settings screen also offers a manual refresh and first-party verification view. Mgeko does not require authentication.
+MadaraDex does not require a user account. Its short-lived anonymous reader token refreshes automatically; the settings screen also offers a manual refresh and first-party verification view. Atsumaru and Mgeko do not require authentication.
 
 ## Install from source
 
@@ -113,7 +121,7 @@ Open the LAN URL printed by the development server on your Paperback device. Bui
 
 ## Privacy and access boundaries
 
-Every cookie jar accepts only explicitly trusted source domains. Account sessions never travel to unrelated image hosts, stale responses cannot resurrect a cleared session, and logout preserves only non-account Cloudflare clearance. MadaraDex’s anonymous fingerprint and reader token are shared only with its first-party CDN because the CDN requires both the token and source referer. Novel content is reduced to a small XHTML allowlist before it reaches Paperback’s reader.
+Every cookie jar accepts only explicitly trusted source domains. Account sessions never travel to unrelated image hosts, stale responses cannot resurrect a cleared session, and logout preserves only non-account Cloudflare clearance. MadaraDex’s anonymous fingerprint and reader token are shared only with its first-party CDN because the CDN requires both the token and source referer. Response bodies are bounded before decoding, and novel content is reduced to safe XHTML before it reaches Paperback’s reader.
 
 No extension in this repository collects credentials, initiates purchases, defeats time or coin locks, or claims access that the source has not granted.
 
@@ -127,7 +135,7 @@ npm run bundle
 npm run test:live
 ```
 
-`npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks all four public protocols, including discovery, filters, stable IDs, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
+`npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks all five public protocols, including Atsumaru’s full anonymous rails and exported-library IDs, discovery, filters, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
 
 Add each extension under `src/<ExtensionName>/` with its own config, implementation, tests, and static assets. Cross-source URL, HTML, cache, request, and cookie behavior belongs in `src/shared/` with regression coverage for every existing consumer.
 

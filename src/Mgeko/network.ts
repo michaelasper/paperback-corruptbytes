@@ -1,6 +1,8 @@
 import type { Request, SearchQuery, SortingOption } from "@paperback/types";
 
+import { fetchSourceJson, fetchSourceText, requestContext } from "../shared/http.js";
 import { decodePaperbackIdComponent, encodePaperbackIdComponent } from "../shared/ids.js";
+import { isHttpsUrlForHosts } from "../shared/url.js";
 import type { MgekoSearchMetadata } from "./models.js";
 
 export const DOMAIN = "https://www.mgeko.cc";
@@ -105,30 +107,27 @@ export const parseMangaUrl = (value: string): string | undefined => {
   return encodePaperbackIdComponent(decodePaperbackIdComponent(match[1]));
 };
 
-const responseBody = (buffer: ArrayBuffer): string => {
-  try {
-    return Application.arrayBufferToUTF8String(buffer);
-  } catch {
-    return new TextDecoder().decode(buffer);
-  }
-};
+const RESPONSE_HOSTS = new Set(["mgeko.cc", "www.mgeko.cc"]);
+const RESPONSE_OPTIONS = {
+  sourceName: "Mgeko",
+  isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
+    isHttpsUrlForHosts(requestUrl, RESPONSE_HOSTS) &&
+    isHttpsUrlForHosts(responseUrl, RESPONSE_HOSTS),
+} as const;
 
 export const fetchText = async (request: Request): Promise<string> => {
-  const [response, buffer] = await Application.scheduleRequest(request);
-  if (response.status === 404) throw new Error(`Mgeko content not found: ${request.url}`);
-  if (response.status === 429)
-    throw new Error("Mgeko rate limit reached. Please wait and try again.");
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(`Mgeko request failed with status ${response.status}.`);
-  }
-  return responseBody(buffer);
+  return fetchSourceText(request, RESPONSE_OPTIONS);
 };
 
 export const fetchJson = async <T>(request: Request): Promise<T> => {
-  const body = await fetchText(request);
   try {
-    return JSON.parse(body) as T;
+    return await fetchSourceJson<T>(request, RESPONSE_OPTIONS);
   } catch (error: unknown) {
-    throw new Error(`Mgeko returned invalid JSON for ${request.url}.`, { cause: error });
+    if (error instanceof Error && /returned invalid JSON\./i.test(error.message)) {
+      throw new Error(`Mgeko returned invalid JSON for ${requestContext(request.url)}.`, {
+        cause: error,
+      });
+    }
+    throw error;
   }
 };

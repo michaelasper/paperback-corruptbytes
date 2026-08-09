@@ -24,6 +24,7 @@ const installApplication = (
   status: number,
   body: string,
   headers: Record<string, string> = {},
+  responseUrl?: string,
 ): Request[] => {
   const requests: Request[] = [];
   const mock: ApplicationMock = {
@@ -32,7 +33,7 @@ const installApplication = (
       requests.push(request);
       return [
         {
-          url: request.url,
+          url: responseUrl ?? request.url,
           status,
           headers,
           cookies: [],
@@ -96,7 +97,10 @@ describe("fetchJSON", () => {
     const requests = installApplication(201, '{"ok":true}');
 
     assert.deepEqual(
-      await fetchJSON<{ ok: boolean }>({ url: "https://example.test/resource", method: "POST" }),
+      await fetchJSON<{ ok: boolean }>({
+        url: "https://api.vortexscans.org/api/resource",
+        method: "POST",
+      }),
       { ok: true },
     );
     assert.equal(requests.length, 1);
@@ -105,38 +109,123 @@ describe("fetchJSON", () => {
   it("surfaces authentication, rate-limit, not-found, and generic HTTP failures", async () => {
     installApplication(401, '{"message":"Unauthorized"}');
     await assert.rejects(
-      fetchJSON({ url: "https://example.test/private", method: "GET" }),
+      fetchJSON({ url: "https://api.vortexscans.org/api/private", method: "GET" }),
       /log in.*Vortex/i,
     );
 
     installApplication(429, "slow down");
     await assert.rejects(
-      fetchJSON({ url: "https://example.test/limited", method: "GET" }),
+      fetchJSON({ url: "https://api.vortexscans.org/api/limited", method: "GET" }),
       /rate limit/i,
     );
 
     installApplication(404, "missing");
     await assert.rejects(
-      fetchJSON({ url: "https://example.test/missing", method: "GET" }),
+      fetchJSON({ url: "https://api.vortexscans.org/api/missing", method: "GET" }),
       /not found/i,
     );
 
     installApplication(500, '{"message":"Database unavailable"}');
     await assert.rejects(
-      fetchJSON({ url: "https://example.test/error", method: "GET" }),
-      /500.*Database unavailable/i,
+      fetchJSON({ url: "https://api.vortexscans.org/api/error?token=secret", method: "GET" }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /500/i);
+        assert.doesNotMatch(error.message, /Database unavailable/i);
+        assert.doesNotMatch(error.message, /token=secret/i);
+        return true;
+      },
     );
   });
 
-  it("reports malformed JSON without leaking a large response body", async () => {
-    installApplication(200, `<html>${"x".repeat(2_000)}</html>`);
+  it("rejects foreign initial requests and redirected responses before decoding", async () => {
+    const initialRequests = installApplication(200, "private");
+    await assert.rejects(
+      fetchJSON({ url: "https://evil.example/api/metadata", method: "GET" }),
+      /response URL was not trusted/i,
+    );
+    assert.equal(initialRequests.length, 0);
+
+    let decodeCalls = 0;
+    installApplication(200, "private", {}, "https://evil.example/redirected");
+    Object.assign(globalThis.Application, {
+      arrayBufferToUTF8String: () => {
+        decodeCalls += 1;
+        return "private";
+      },
+    });
+    await assert.rejects(
+      fetchJSON({ url: "https://api.vortexscans.org/api/metadata", method: "GET" }),
+      /response URL was not trusted/i,
+    );
+    assert.equal(decodeCalls, 0);
+  });
+
+  it("rejects oversized responses before decoding them", async () => {
+    let decodeCalls = 0;
+    installApplication(200, "x".repeat(8 * 1_024 * 1_024 + 1));
+    Object.assign(globalThis.Application, {
+      arrayBufferToUTF8String: (buffer: ArrayBuffer) => {
+        decodeCalls += 1;
+        return new TextDecoder().decode(buffer);
+      },
+    });
 
     await assert.rejects(
-      fetchJSON({ url: "https://example.test/not-json", method: "GET" }),
+      fetchJSON({ url: "https://api.vortexscans.org/api/query?token=secret", method: "GET" }),
+      /Vortex Scans.*too large/i,
+    );
+    assert.equal(decodeCalls, 0);
+  });
+
+  it("classifies oversized authentication failures before decoding them", async () => {
+    let decodeCalls = 0;
+    installApplication(401, "x".repeat(8 * 1_024 * 1_024 + 1));
+    Object.assign(globalThis.Application, {
+      arrayBufferToUTF8String: () => {
+        decodeCalls += 1;
+        return "unexpected";
+      },
+    });
+
+    await assert.rejects(
+      fetchJSON({ url: "https://api.vortexscans.org/api/private", method: "GET" }),
+      /log in.*Vortex/i,
+    );
+    assert.equal(decodeCalls, 0);
+  });
+
+  it("distinguishes HTML fallback pages from malformed JSON without leaking the body", async () => {
+    installApplication(200, `<html>${"private server detail ".repeat(100)}</html>`);
+
+    await assert.rejects(
+      fetchJSON({
+        url: "https://api.vortexscans.org/api/not-json?token=secret",
+        method: "GET",
+      }),
       (error: unknown) => {
         assert.ok(error instanceof Error);
-        assert.match(error.message, /parse JSON/i);
+        assert.match(error.message, /HTML instead of JSON/i);
         assert.ok(error.message.length < 500);
+        assert.doesNotMatch(error.message, /private server detail|token=secret/i);
+        return true;
+      },
+    );
+  });
+
+  it("redacts credentials, query, fragment, and controls from malformed JSON context", async () => {
+    installApplication(200, "not-json");
+
+    await assert.rejects(
+      fetchJSON({
+        url: "https://api.vortexscans.org/api/not-json\u0000?token=secret#fragment",
+        method: "GET",
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /parse JSON.*\/not-json/i);
+        assert.doesNotMatch(error.message, /token=secret|fragment/i);
+        assert.equal(error.message.includes("\u0000"), false);
         return true;
       },
     );

@@ -8,6 +8,7 @@ import {
   fetchAccountStatus,
   isVortexCookie,
   persistVortexCookies,
+  SIGN_OUT_URL,
   signOut,
   type CookieStore,
 } from "./auth.js";
@@ -53,6 +54,7 @@ class MemoryCookieStore implements CookieStore {
 const installApplication = (
   status: number,
   body: string,
+  responseUrl?: string,
 ): { requests: Request[]; setResponse(status: number, body: string): void } => {
   const requests: Request[] = [];
   let currentStatus = status;
@@ -63,7 +65,12 @@ const installApplication = (
       scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
         requests.push(request);
         return [
-          { url: request.url, status: currentStatus, headers: {}, cookies: [] } as Response,
+          {
+            url: responseUrl ?? request.url,
+            status: currentStatus,
+            headers: {},
+            cookies: [],
+          } as Response,
           new TextEncoder().encode(currentBody).buffer,
         ];
       },
@@ -180,6 +187,51 @@ describe("Vortex account status", () => {
     assert.deepEqual(await fetchAccountStatus(), { authenticated: false });
   });
 
+  it("rejects foreign and oversized account responses before decoding", async () => {
+    let decodeCalls = 0;
+    installApplication(200, JSON.stringify({ user: { id: "42" } }), "https://evil.example/api/me");
+    Object.assign(globalThis.Application, {
+      arrayBufferToUTF8String: () => {
+        decodeCalls += 1;
+        return JSON.stringify({ user: { id: "42" } });
+      },
+    });
+    assert.deepEqual(await fetchAccountStatus(), { authenticated: false });
+    assert.equal(decodeCalls, 0);
+
+    Object.assign(globalThis, {
+      Application: {
+        arrayBufferToUTF8String: () => {
+          decodeCalls += 1;
+          return "unexpected";
+        },
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => [
+          { url: request.url, status: 200, headers: {}, cookies: [] },
+          new ArrayBuffer(256 * 1_024 + 1),
+        ],
+      },
+    });
+    assert.deepEqual(await fetchAccountStatus(), { authenticated: false });
+    assert.equal(decodeCalls, 0);
+  });
+
+  it("invalidates auth on an oversized rejected account response", async () => {
+    const store = new MemoryCookieStore();
+    store.cookies = [cookie()];
+    Object.assign(globalThis, {
+      Application: {
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => [
+          { url: request.url, status: 401, headers: {}, cookies: [] },
+          new ArrayBuffer(256 * 1_024 + 1),
+        ],
+      },
+    });
+
+    assert.deepEqual(await fetchAccountStatus(store), { authenticated: false });
+    assert.deepEqual(store.cookies, []);
+    assert.equal(store.invalidations, 1);
+  });
+
   it("signs out server-side and always clears the local session", async () => {
     const application = installApplication(500, "failed");
     const store = new MemoryCookieStore();
@@ -196,5 +248,33 @@ describe("Vortex account status", () => {
         cookies: { "__Secure-vthemeauth.session_token": "secret" },
       },
     ]);
+  });
+
+  it("always clears local auth when logout receives a foreign or oversized response", async () => {
+    const responses = [
+      {
+        url: "https://evil.example/logout",
+        data: new ArrayBuffer(0),
+      },
+      {
+        url: SIGN_OUT_URL,
+        data: new ArrayBuffer(256 * 1_024 + 1),
+      },
+    ];
+    for (const next of responses) {
+      const store = new MemoryCookieStore();
+      store.cookies = [cookie()];
+      Object.assign(globalThis, {
+        Application: {
+          scheduleRequest: async (_request: Request): Promise<[Response, ArrayBuffer]> => [
+            { url: next.url, status: 200, headers: {}, cookies: [] },
+            next.data,
+          ],
+        },
+      });
+
+      await signOut(store);
+      assert.deepEqual(store.cookies, []);
+    }
   });
 });

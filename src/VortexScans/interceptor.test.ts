@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import type { Request, Response } from "@paperback/types";
 
+import { VortexCookieInterceptor } from "./cookies.js";
 import { CloudflareError, VortexInterceptor } from "./interceptor.js";
 
 const originalApplication = globalThis.Application;
@@ -15,6 +16,8 @@ beforeEach(() => {
     Application: {
       getDefaultUserAgent: async () => "Paperback Test/0.9",
       arrayBufferToUTF8String: (buffer: ArrayBuffer) => new TextDecoder().decode(buffer),
+      getSecureState: () => undefined,
+      setSecureState: () => undefined,
     },
   });
 });
@@ -61,6 +64,32 @@ describe("VortexInterceptor request headers", () => {
 
     assert.match(intercepted.headers?.accept ?? "", /image\//i);
     assert.doesNotMatch(intercepted.headers?.accept ?? "", /application\/json/i);
+  });
+
+  it("keeps the storage image host neutral and strips caller credentials", async () => {
+    const interceptor = new VortexInterceptor();
+    const cookieStore = new VortexCookieInterceptor();
+    const request: Request = {
+      url: "https://storage.vortexscans.org/page.webp",
+      method: "GET",
+      headers: {
+        Cookie: "session=private",
+        Authorization: "Bearer private",
+        Origin: "https://vortexscans.org",
+        Referer: "https://vortexscans.org/secret",
+      },
+      cookies: { "better-auth.session_token": "must-not-leak" },
+    };
+    await cookieStore.interceptRequest(request);
+    const intercepted = await interceptor.interceptRequest(request);
+
+    const headerNames = Object.keys(intercepted.headers ?? {}).map((name) => name.toLowerCase());
+    for (const sensitive of ["cookie", "authorization", "origin", "referer"]) {
+      assert.equal(headerNames.includes(sensitive), false, `unexpected ${sensitive} header`);
+    }
+    assert.equal(intercepted.headers?.accept, undefined);
+    assert.equal(intercepted.headers?.["user-agent"], "Paperback Test/0.9");
+    assert.deepEqual(intercepted.cookies, {});
   });
 
   it("recognizes first-party requests when Paperback provides no browser URL global", async () => {

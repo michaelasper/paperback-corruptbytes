@@ -67,6 +67,18 @@ const sourceManga = (): SourceManga => ({
 });
 
 describe("ThunderClient", () => {
+  it("evicts a cached series document when parsing fails", async () => {
+    let seriesBody = "<html><body><main>temporary shape</main></body></html>";
+    const requests = installApplication(() => ({ body: seriesBody }));
+    const client = new ThunderClient();
+
+    await assert.rejects(client.getMangaDetails("storm-architect"), /valid series URL/);
+
+    seriesBody = SERIES_HTML;
+    assert.equal((await client.getMangaDetails("storm-architect")).mangaId, "storm-architect");
+    assert.equal(requests.length, 2);
+  });
+
   it("loads paginated directory results and resolves pasted series URLs", async () => {
     const requests = installApplication((request) => {
       if (request.url.includes("/comics/?page=2")) return { body: DIRECTORY_HTML };

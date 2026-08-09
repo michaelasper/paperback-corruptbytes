@@ -1,5 +1,7 @@
 import type { Cookie } from "@paperback/types";
 
+import { assertResponseBodyWithinLimit, scheduleRawResponse } from "../shared/http.js";
+import { isHttpsUrlForHosts } from "../shared/url.js";
 import { isMadaraDexCookie } from "./cookies.js";
 import { buildRefreshRequest } from "./network.js";
 
@@ -20,9 +22,19 @@ export interface MdxAuthContract {
 interface MdxAuthOptions {
   randomBytes?: () => Uint8Array;
   now?: () => number;
+  refreshTimeoutMs?: number;
 }
 
 const FINGERPRINT_LIFETIME_MS = 30 * 24 * 60 * 60_000;
+export const MADARA_REFRESH_TIMEOUT_MS = 15_000;
+const AUTH_RESPONSE_HOSTS = new Set(["madaradex.org", "www.madaradex.org"]);
+const AUTH_RESPONSE_OPTIONS = {
+  sourceName: "MadaraDex authentication",
+  maxBodyBytes: 256 * 1_024,
+  isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
+    isHttpsUrlForHosts(requestUrl, AUTH_RESPONSE_HOSTS) &&
+    isHttpsUrlForHosts(responseUrl, AUTH_RESPONSE_HOSTS),
+} as const;
 const EXPIRY_SKEW_MS = 30_000;
 
 const normalizedName = (cookie: Cookie): string => cookie.name.trim().toLowerCase();
@@ -39,12 +51,17 @@ const randomFingerprint = (randomBytes?: () => Uint8Array): string => {
 export class MdxAuthManager implements MdxAuthContract {
   private refreshInFlight: Promise<void> | undefined;
   private readonly now: () => number;
+  private readonly refreshTimeoutMs: number;
 
   constructor(
     private readonly store: MadaraCookieStore,
     private readonly options: MdxAuthOptions = {},
   ) {
     this.now = options.now ?? Date.now;
+    this.refreshTimeoutMs =
+      Number.isFinite(options.refreshTimeoutMs) && (options.refreshTimeoutMs ?? 0) > 0
+        ? Math.max(1, Math.trunc(options.refreshTimeoutMs as number))
+        : MADARA_REFRESH_TIMEOUT_MS;
   }
 
   isAuthenticated(): boolean {
@@ -96,32 +113,58 @@ export class MdxAuthManager implements MdxAuthContract {
   }
 
   private async performRefresh(force: boolean): Promise<void> {
-    const fingerprint = this.ensureFingerprint();
-    if (force || !this.validCookie("mdx_auth")) {
-      if (this.store.invalidateSensitiveCookies && this.store.acceptSensitiveCookies) {
-        this.store.invalidateSensitiveCookies();
-        this.store.acceptSensitiveCookies();
-      } else {
-        this.removeNamed("mdx_auth");
+    try {
+      const fingerprint = this.ensureFingerprint();
+      if (force || !this.validCookie("mdx_auth")) {
+        if (this.store.invalidateSensitiveCookies && this.store.acceptSensitiveCookies) {
+          this.store.invalidateSensitiveCookies();
+          this.store.acceptSensitiveCookies();
+        } else {
+          this.removeNamed("mdx_auth");
+        }
       }
-    }
-    const request = buildRefreshRequest();
-    request.cookies = Object.fromEntries(
-      this.store.cookies
-        .filter((cookie) => isMadaraDexCookie(cookie) && isUnexpired(cookie, this.now()))
-        .map((cookie) => [cookie.name, cookie.value]),
-    );
-    request.cookies.mdx_fp = fingerprint.value;
+      const request = buildRefreshRequest();
+      request.cookies = Object.fromEntries(
+        this.store.cookies
+          .filter((cookie) => isMadaraDexCookie(cookie) && isUnexpired(cookie, this.now()))
+          .map((cookie) => [cookie.name, cookie.value]),
+      );
+      request.cookies.mdx_fp = fingerprint.value;
 
-    const [response] = await Application.scheduleRequest(request);
-    if (response.status < 200 || response.status >= 300) {
-      throw new Error(`MadaraDex authentication refresh failed with status ${response.status}.`);
+      const { response, data } = await this.scheduleRefresh(request);
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`MadaraDex authentication refresh failed with status ${response.status}.`);
+      }
+      assertResponseBodyWithinLimit(data, AUTH_RESPONSE_OPTIONS);
+      for (const cookie of response.cookies) {
+        if (isMadaraDexCookie(cookie)) this.store.setCookie(cookie);
+      }
+      if (!this.validCookie("mdx_auth")) {
+        throw new Error("MadaraDex authentication refresh did not issue mdx_auth.");
+      }
+    } catch (error: unknown) {
+      // Invalidate the generation on every failed refresh. The request may
+      // still settle later, and stale response cookies must not resurrect auth.
+      this.store.invalidateSensitiveCookies?.();
+      if (!this.store.invalidateSensitiveCookies) this.removeNamed("mdx_auth");
+      throw error;
     }
-    for (const cookie of response.cookies) {
-      if (isMadaraDexCookie(cookie)) this.store.setCookie(cookie);
-    }
-    if (!this.validCookie("mdx_auth")) {
-      throw new Error("MadaraDex authentication refresh did not issue mdx_auth.");
+  }
+
+  private async scheduleRefresh(request: ReturnType<typeof buildRefreshRequest>) {
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeout = setTimeout(() => {
+        reject(new Error("MadaraDex authentication refresh timed out."));
+      }, this.refreshTimeoutMs);
+    });
+    try {
+      return await Promise.race([
+        scheduleRawResponse(request, AUTH_RESPONSE_OPTIONS),
+        timeoutPromise,
+      ]);
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
     }
   }
 }

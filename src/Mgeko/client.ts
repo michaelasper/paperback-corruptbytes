@@ -8,7 +8,7 @@ import type {
   SourceManga,
 } from "@paperback/types";
 
-import { AsyncKeyedCache } from "../shared/async-cache.js";
+import { AsyncKeyedCache, utf8ByteLength } from "../shared/async-cache.js";
 import type {
   MgekoBrowseEnvelope,
   MgekoCard,
@@ -43,18 +43,28 @@ const searchItem = (manga: SourceManga): SearchResultItem => ({
   contentRating: manga.mangaInfo.contentRating,
 });
 
+const SERIES_CACHE_MAX_BYTES = 2 * 1_024 * 1_024;
+const CHAPTER_CACHE_MAX_BYTES = 4 * 1_024 * 1_024;
+const FILTER_CACHE_MAX_BYTES = 1 * 1_024 * 1_024;
+
 export class MgekoClient {
   private readonly seriesCache = new AsyncKeyedCache<string, string>({
     ttlMs: 120_000,
     maxEntries: 64,
+    maxWeight: SERIES_CACHE_MAX_BYTES,
+    weigh: utf8ByteLength,
   });
   private readonly chapterCache = new AsyncKeyedCache<string, string>({
     ttlMs: 30_000,
     maxEntries: 48,
+    maxWeight: CHAPTER_CACHE_MAX_BYTES,
+    weigh: utf8ByteLength,
   });
   private readonly filterCache = new AsyncKeyedCache<"filters", string>({
     ttlMs: 15 * 60_000,
     maxEntries: 1,
+    maxWeight: FILTER_CACHE_MAX_BYTES,
+    weigh: utf8ByteLength,
   });
 
   async getBrowsePage(
@@ -75,26 +85,29 @@ export class MgekoClient {
   }
 
   async getFilterOptions(): Promise<MgekoFilterOptions> {
-    const html = await this.filterCache.get("filters", () =>
-      fetchText({ url: `${DOMAIN}/browse-comics/`, method: "GET" }),
+    return this.filterCache.getMapped(
+      "filters",
+      () => fetchText({ url: `${DOMAIN}/browse-comics/`, method: "GET" }),
+      parseFilterOptions,
     );
-    return parseFilterOptions(html);
   }
 
   async getMangaDetails(mangaId: string): Promise<SourceManga> {
     const key = `manga:${mangaId}`;
-    const html = await this.seriesCache.get(key, () =>
-      fetchText({ url: buildMangaUrl(mangaId), method: "GET" }),
+    return this.seriesCache.getMapped(
+      key,
+      () => fetchText({ url: buildMangaUrl(mangaId), method: "GET" }),
+      (html) => parseMangaDetails(html, mangaId),
     );
-    return parseMangaDetails(html, mangaId);
   }
 
   async getChapters(sourceManga: SourceManga, sinceDate?: Date): Promise<Chapter[]> {
     const key = `chapters:${sourceManga.mangaId}`;
-    const html = await this.chapterCache.get(key, () =>
-      fetchText({ url: buildChaptersUrl(sourceManga.mangaId), method: "GET" }),
+    const chapters = await this.chapterCache.getMapped(
+      key,
+      () => fetchText({ url: buildChaptersUrl(sourceManga.mangaId), method: "GET" }),
+      (html) => parseChapters(html, sourceManga),
     );
-    const chapters = parseChapters(html, sourceManga);
     if (!sinceDate || Number.isNaN(sinceDate.getTime())) return chapters;
     return chapters.filter(
       (chapter) => !chapter.publishDate || chapter.publishDate.getTime() > sinceDate.getTime(),

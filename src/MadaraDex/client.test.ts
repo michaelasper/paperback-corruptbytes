@@ -63,6 +63,17 @@ beforeEach(() => {
 afterEach(() => Object.assign(globalThis, { Application: originalApplication }));
 
 describe("MadaraDex client", () => {
+  it("evicts a cached series document when parsing fails", async () => {
+    const client = new MadaraDexClient();
+    seriesHtml = "<html><body><main>temporary shape</main></body></html>";
+
+    await assert.rejects(client.getMangaDetails("2872"), /series title/);
+
+    seriesHtml = SERIES_HTML;
+    assert.equal((await client.getMangaDetails("2872")).mangaId, "2872");
+    assert.equal(requests.filter((request) => request.url.includes("?p=2872")).length, 2);
+  });
+
   it("coalesces reusable documents while returning fresh parsed objects", async () => {
     const client = new MadaraDexClient();
     const [first, second] = await Promise.all([

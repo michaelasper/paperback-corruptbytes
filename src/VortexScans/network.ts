@@ -1,5 +1,8 @@
 import type { JSONObject, Request, SearchQuery, SortingOption } from "@paperback/types";
 
+import { fetchSourceTextResponse, requestContext, SourceHttpError } from "../shared/http.js";
+import { isHttpsUrlForHosts } from "../shared/url.js";
+
 export const DOMAIN = "https://vortexscans.org";
 export const API_URL = "https://api.vortexscans.org/api";
 export const PAGE_SIZE = 18;
@@ -66,51 +69,39 @@ export const parseSeriesUrl = (value: string): string | undefined => {
   }
 };
 
-const errorMessageFromBody = (body: string): string | undefined => {
-  try {
-    const parsed = JSON.parse(body) as {
-      error?: { message?: unknown } | string;
-      message?: unknown;
-    };
-    if (typeof parsed.message === "string" && parsed.message.trim()) {
-      return parsed.message.trim().slice(0, 240);
-    }
-    if (typeof parsed.error === "string" && parsed.error.trim()) {
-      return parsed.error.trim().slice(0, 240);
-    }
-    if (typeof parsed.error === "object" && typeof parsed.error?.message === "string") {
-      return parsed.error.message.trim().slice(0, 240);
-    }
-  } catch {
-    // Non-JSON error bodies are intentionally ignored.
-  }
-  return undefined;
-};
+const RESPONSE_HOSTS = new Set(["api.vortexscans.org"]);
+const RESPONSE_OPTIONS = {
+  sourceName: "Vortex Scans",
+  isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
+    isHttpsUrlForHosts(requestUrl, RESPONSE_HOSTS) &&
+    isHttpsUrlForHosts(responseUrl, RESPONSE_HOSTS),
+} as const;
+const HTML_DOCUMENT = /^\s*(?:<!doctype\s+html\b|<html\b|<head\b|<body\b|<title\b)/i;
 
 export const fetchJSON = async <T>(request: Request): Promise<T> => {
-  const [response, buffer] = await Application.scheduleRequest(request);
-  const body = Application.arrayBufferToUTF8String(buffer);
-
-  if (response.status === 401 || response.status === 403) {
-    throw new Error("Log in to Vortex Scans from the extension settings and try again.");
-  }
-  if (response.status === 404) {
-    throw new Error(`Content not found: ${request.url}`);
-  }
-  if (response.status === 429) {
-    throw new Error("Vortex Scans rate limit reached. Please wait and try again.");
-  }
-  if (response.status < 200 || response.status >= 300) {
-    const detail = errorMessageFromBody(body);
-    throw new Error(
-      `Vortex Scans request failed with status ${response.status}${detail ? `: ${detail}` : ""}`,
-    );
+  let body: string;
+  try {
+    ({ body } = await fetchSourceTextResponse(request, RESPONSE_OPTIONS));
+  } catch (error: unknown) {
+    if (!(error instanceof SourceHttpError)) throw error;
+    if (error.status === 401 || error.status === 403) {
+      throw new Error("Log in to Vortex Scans from the extension settings and try again.");
+    }
+    if (error.status === 404) throw new Error("Content not found.");
+    if (error.status === 429)
+      throw new Error("Vortex Scans rate limit reached. Please wait and try again.");
+    throw error;
   }
 
   try {
+    if (HTML_DOCUMENT.test(body)) {
+      throw new Error("Vortex Scans returned HTML instead of JSON.");
+    }
     return JSON.parse(body) as T;
   } catch (error: unknown) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse JSON from ${request.url}: ${reason}`, { cause: error });
+    if (error instanceof Error && /returned HTML instead of JSON/i.test(error.message)) {
+      throw error;
+    }
+    throw new Error(`Failed to parse JSON from ${requestContext(request.url)}.`, { cause: error });
   }
 };

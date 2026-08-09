@@ -34,12 +34,18 @@ describe("Mgeko transport boundaries", () => {
       url: "https://imgsrv5.com/pages/01.jpg",
       method: "GET",
     });
+    const unlistedSubdomain = await interceptor.interceptRequest({
+      url: "https://takeover.mgeko.cc/pages/01.jpg",
+      method: "GET",
+    });
 
     assert.equal(firstParty.headers?.referer, "https://www.mgeko.cc/");
     assert.equal(firstParty.headers?.["accept-language"], "en-US,en;q=0.9");
     assert.equal(image.headers?.referer, undefined);
     assert.equal(image.headers?.origin, undefined);
     assert.equal(image.headers?.["user-agent"], "Paperback/Test");
+    assert.equal(unlistedSubdomain.headers?.referer, undefined);
+    assert.equal(unlistedSubdomain.headers?.["accept-language"], undefined);
   });
 
   it("raises Cloudflare only for a verified first-party challenge", async () => {
@@ -78,7 +84,29 @@ describe("Mgeko transport boundaries", () => {
       method: "GET",
       cookies: { cf_clearance: "caller", display: "wide" },
     });
+    const unlistedSubdomain = await cookies.interceptRequest({
+      url: "https://takeover.mgeko.cc/page.jpg",
+      method: "GET",
+      cookies: { cf_clearance: "caller", display: "wide" },
+    });
     assert.deepEqual(site.cookies, { cf_clearance: "ok" });
     assert.deepEqual(image.cookies, { display: "wide" });
+    assert.deepEqual(unlistedSubdomain.cookies, { display: "wide" });
+
+    const fresh = new MgekoCookieInterceptor();
+    await fresh.interceptResponse(
+      { url: "https://takeover.mgeko.cc/page.jpg", method: "GET" },
+      {
+        url: "https://takeover.mgeko.cc/page.jpg",
+        status: 200,
+        headers: {},
+        cookies: [{ name: "cf_clearance", value: "forged", domain: ".mgeko.cc", path: "/" }],
+      },
+      new ArrayBuffer(0),
+    );
+    assert.equal(
+      fresh.cookies.some((cookie) => cookie.value === "forged"),
+      false,
+    );
   });
 });

@@ -57,7 +57,7 @@ describe("Thunder network URLs", () => {
   it("accepts only canonical first-party series URLs", () => {
     assert.equal(
       parseSeriesUrl("https://en-thunderscans.com/comics/storm%20architect/?from=app"),
-      "storm architect",
+      "storm%20architect",
     );
     assert.equal(parseSeriesUrl("https://www.en-thunderscans.com/comics/title/"), undefined);
     assert.equal(parseSeriesUrl("https://en-thunderscans.com.evil.test/comics/title/"), undefined);

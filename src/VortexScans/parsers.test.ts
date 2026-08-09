@@ -32,6 +32,13 @@ const sourceManga: SourceManga = {
 void test("manga IDs, URLs, dates, and HTML text are safe and deterministic", () => {
   const mangaId = encodeMangaId("hero's path/part two", 42);
   assert.equal(mangaId, "hero%27s%20path%2Fpart%20two@42");
+  assert.equal(
+    encodeMangaId(
+      "the-dark-mage-~-i-am-the-only-transcendant-mage-who-regressed-with-cheat-skills",
+      346,
+    ),
+    "the-dark-mage-%7E-i-am-the-only-transcendant-mage-who-regressed-with-cheat-skills@346",
+  );
   assert.deepEqual(decodeMangaIdentifier(mangaId), {
     slug: "hero's path/part two",
     numericId: 42,

@@ -43,6 +43,21 @@ const chapter = (overrides: Partial<Chapter> = {}): Chapter => ({
 });
 
 describe("Thunder list parsers", () => {
+  it("encodes source slugs which Paperback cannot represent directly", () => {
+    const page = parseDirectoryPage(`
+      <div class="listupd">
+        <div class="bsx">
+          <a href="https://en-thunderscans.com/comics/storm-~-architect/" title="Storm Architect">
+            <img src="https://en-thunderscans.com/covers/storm.webp" alt="Storm Architect">
+          </a>
+          <div class="tt">Storm Architect</div>
+        </div>
+      </div>
+    `);
+
+    assert.equal(page.items[0]?.mangaId, "storm-%7E-architect");
+  });
+
   it("parses directory cards, stable slug IDs, ratings, and pagination", () => {
     const page = parseDirectoryPage(DIRECTORY_HTML);
 

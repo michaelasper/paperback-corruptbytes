@@ -9,6 +9,7 @@ import { load, type CheerioAPI } from "cheerio";
 import type { AnyNode } from "domhandler";
 
 import { contentRatingForTags, plainTextFromHtml, sanitizeChapterHtml } from "../shared/html.js";
+import { decodePaperbackIdComponent, encodePaperbackIdComponent } from "../shared/ids.js";
 import { resolveHttpsUrl } from "../shared/url.js";
 import type {
   HomeFeedId,
@@ -76,11 +77,7 @@ export const parseSeriesSlug = (value: unknown): string | undefined => {
     /^https:\/\/en-thunderscans\.com\/comics\/([^/?#]+)\/?(?:[?#].*)?$/i,
   );
   if (!match?.[1]) return undefined;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
-  }
+  return encodePaperbackIdComponent(decodePaperbackIdComponent(match[1]));
 };
 
 const chapterIdFromText = (value: string): string | undefined =>

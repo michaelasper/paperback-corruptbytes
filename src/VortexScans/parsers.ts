@@ -9,6 +9,7 @@ import {
 import { load } from "cheerio";
 
 import { contentRatingForTags, plainTextFromHtml, sanitizeChapterHtml } from "../shared/html.js";
+import { decodePaperbackIdComponent, encodePaperbackIdComponent } from "../shared/ids.js";
 import { resolveHttpsUrl } from "../shared/url.js";
 import type {
   ChapterAccess,
@@ -18,7 +19,6 @@ import type {
 } from "./models.js";
 import { DOMAIN } from "./network.js";
 
-const ENCODED_ID_PUNCTUATION = /[!'()*]/g;
 const PLACEHOLDER_CREATOR = /^(?:-|–|—|_|n\/a|na|unknown|updating|tba)$/i;
 const FALLBACK_COVER_URL = `${DOMAIN}/favicon.ico`;
 
@@ -77,10 +77,7 @@ export const encodeMangaId = (slug: string, numericId?: number | string | null):
   const normalizedSlug = slug.trim().replace(/^\/+|\/+$/g, "");
   if (!normalizedSlug) throw new Error("Cannot encode an empty Vortex Scans slug");
 
-  const encodedSlug = encodeURIComponent(normalizedSlug).replace(
-    ENCODED_ID_PUNCTUATION,
-    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-  );
+  const encodedSlug = encodePaperbackIdComponent(normalizedSlug);
   const id = asText(numericId);
   return id && /^\d+$/.test(id) ? `${encodedSlug}@${id}` : encodedSlug;
 };
@@ -95,12 +92,7 @@ export const decodeMangaIdentifier = (value: string): DecodedMangaIdentifier => 
   const normalized = value.trim();
   const match = normalized.match(/^(.*)@(\d+)$/);
   const encodedSlug = match?.[1] ?? normalized;
-  let slug = encodedSlug;
-  try {
-    slug = decodeURIComponent(encodedSlug);
-  } catch {
-    // Preserve the original value if an old/broken extension supplied malformed encoding.
-  }
+  const slug = decodePaperbackIdComponent(encodedSlug);
 
   return match?.[2] === undefined ? { slug } : { slug, numericId: Number(match[2]) };
 };

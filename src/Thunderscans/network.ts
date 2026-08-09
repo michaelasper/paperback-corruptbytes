@@ -1,5 +1,6 @@
 import type { Request, SearchQuery, SortingOption } from "@paperback/types";
 
+import { decodePaperbackIdComponent, encodePaperbackIdComponent } from "../shared/ids.js";
 import type { HomeFeedId, ThunderSearchMetadata } from "./models.js";
 
 export const DOMAIN = "https://en-thunderscans.com";
@@ -63,22 +64,13 @@ export const parseSeriesUrl = (value: string): string | undefined => {
     .trim()
     .match(/^https:\/\/en-thunderscans\.com\/comics\/([^/?#]+)\/?(?:[?#].*)?$/i);
   if (!match?.[1]) return undefined;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
-  }
+  return encodePaperbackIdComponent(decodePaperbackIdComponent(match[1]));
 };
 
 const safeSlug = (value: string): string | undefined => {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
-  let decoded = trimmed;
-  try {
-    decoded = decodeURIComponent(trimmed);
-  } catch {
-    // A literal percent may be a valid part of an old ID; encode it below.
-  }
+  const decoded = decodePaperbackIdComponent(trimmed);
   return /[/?#\\\0]|^\.{1,2}$/.test(decoded) ? undefined : decoded;
 };
 

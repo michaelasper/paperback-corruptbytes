@@ -1,12 +1,17 @@
 <div align="center">
-  <h1>Paperback CorruptBytes</h1>
-  <p>Paperback 0.9 extensions maintained by CorruptBytes.</p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset=".github/logo-light.svg">
+    <img alt="corruptbytes" src=".github/logo-light.svg" width="440">
+  </picture>
+  <p>High-care Paperback sources for readers who want reliable catalogs, search, and legitimately accessible chapters.</p>
 </div>
 
 <div align="center">
 
 [![Paperback 0.9.x][paperback-shield]][paperback-url]
 [![CI and Pages][ci-shield]][ci-url]
+[![Node.js 24+][node-shield]][node-url]
 
 </div>
 
@@ -19,40 +24,56 @@
 
 ---
 
-## Why Paperback CorruptBytes?
+## Why this repository?
 
-This repository is a home for independent Paperback sources that need careful protocol handling, strong regression coverage, and ongoing maintenance. It is intentionally site-neutral: each source lives in its own directory and ships through one installable repository.
+If you use Paperback daily and care more about correctness than the number of sources installed, this repository is for you. Each extension receives site-specific parsing, stable identifiers, account-aware access handling, deterministic regression tests, and live protocol checks instead of inheriting a fragile generic scraper.
 
-## Available Extensions
+It is not a paywall bypass. Extensions never purchase, unlock, or fabricate access to chapters that the source does not make available to your account.
 
-| Extension                                                                      | Status | Highlights                                                                                                     |
-| ------------------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------------- |
-| <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans** | Alpha  | Discover, advanced search, comics, novels, lock and price state, and access to legitimately purchased chapters |
+## Highlights
+
+- **Read the formats each site actually publishes.** Comic image readers and novel HTML readers preserve source order and reject unsafe content.
+- **Keep existing library progress.** Thunder retains the slug-based manga IDs and numeric chapter IDs used by the earlier Paperback source.
+- **Use chapters you legitimately purchased.** First-party sessions expose only content the signed-in site reports as accessible; unavailable chapters remain visibly locked.
+- **Browse complete catalogs.** Discovery feeds, pagination, genres, sorting, advanced filters, title search, and pasted series URLs follow each site’s real protocol.
+- **Sign in without surrendering credentials.** Authentication stays on the source’s own page, and session cookies remain in Paperback’s secure state, source-scoped and blocked from reader CDNs.
+- **Fail clearly under site changes.** Cloudflare challenges, rate limits, malformed responses, and locked pages produce targeted errors instead of empty readers or invalid URLs.
+- **Ship changes with evidence.** Shared engine components and source adapters are covered by deterministic tests plus scheduled live public-contract checks.
+
+## Available extensions
+
+| Extension                                                                        | Status | Best for                                                                                                                |
+| -------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| <img src="src/Thunderscans/static/icon.png" alt="" width="28"> **Thunder Scans** | Alpha  | Comics, novels, complete discovery/search, coin-lock visibility, and chapters already available to your Thunder account |
+| <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans**   | Alpha  | Comics, novels, rich filters, paid-state metadata, and chapters already purchased through Vortex                        |
+
+### Thunder Scans
+
+- Popular today, editor’s picks, latest comics, latest novels, recently added titles, and the full genre catalog.
+- Status, format, genre, and directory sorting filters, with accurate filtered title search through Thunder’s structured endpoint.
+- Stable chapter IDs, exact chapter URL reuse, lock and coin-price labels, and a preference to hide unavailable chapters.
+- First-party profile validation and purchased-chapter access without any automated purchase or unlock action.
 
 ### Vortex Scans
 
-Vortex serves free and paid chapters through different access paths. The extension understands both while respecting the access state returned for the signed-in account.
+- Latest updates, popular titles, recently added series, genres, pagination, and sorting.
+- Title and pasted-URL search with status, type, direction, and include/exclude genre filters.
+- Google or Discord sign-in, paid-state metadata, and access to chapters Vortex reports as purchased.
+- Comic images and sanitized novel HTML with deterministic page order.
 
-- Opens Vortex’s Google or Discord sign-in page without handling your password.
-- Reads chapters Vortex reports as accessible, including chapters already purchased by the account.
-- Shows paid chapter prices and lock state, with a setting to include or hide unavailable chapters.
-- Supports comic images and sanitized novel HTML with deterministic page order.
-- Provides latest updates, popular titles, recently added series, genres, pagination, and sorting.
-- Searches by title or pasted Vortex URL, with status, type, direction, and include/exclude genre filters.
-- Keeps first-party session cookies in source-scoped secure state and clears rejected sessions.
-- Handles Vortex rate limits and Cloudflare challenges without confusing ordinary locked responses for challenges.
-
-## Quick Start
+## Quick start
 
 1. Open the [repository installation page][install-page] on the device running Paperback.
-2. Add **Paperback CorruptBytes** as a repository.
-3. Install any extension listed above.
+2. Add **paperback-corruptbytes** as a repository.
+3. Install Thunder Scans, Vortex Scans, or both.
 
-For Vortex purchased chapters, open the extension settings, choose **Sign in to Vortex Scans**, and complete Google or Discord sign-in. Chapters become readable only after Vortex validates the session; unavailable paid chapters remain visibly locked.
+## Sign in for purchased chapters
 
-After Vortex returns to its home page, tap **Done** to import the session into the extension. Paperback’s embedded browser does not currently provide a secure external-browser or passkey handoff, so that authentication must finish inside the sign-in view.
+Open the extension’s settings and choose its sign-in action. Complete authentication on the source’s first-party page, return to the account or profile page, then tap **Done** so Paperback can import only the resulting source cookies.
 
-## Install From Source
+Paperback’s embedded browser does not currently provide a secure external-browser or passkey handoff. If your normal sign-in depends on a passkey, use another first-party method the source offers inside the embedded view.
+
+## Install from source
 
 ```bash
 git clone https://github.com/michaelasper/paperback-corruptbytes.git
@@ -61,41 +82,43 @@ npm ci
 npm run serve
 ```
 
-Open the LAN URL printed by the development server on your Paperback device. The hosted repository is built from `main` and deployed to GitHub Pages automatically.
+Open the LAN URL printed by the development server on your Paperback device. Builds from `main` deploy to GitHub Pages automatically.
 
 ## Prerequisites
 
-| Requirement    | Version or purpose                                 |
-| -------------- | -------------------------------------------------- |
-| Paperback      | 0.9.x                                              |
-| Node.js        | 24 or newer for local development                  |
-| Source account | Optional; required only for account-gated features |
+| Requirement    | Version or purpose                                                |
+| -------------- | ----------------------------------------------------------------- |
+| Paperback      | 0.9.x                                                             |
+| Node.js        | 24 or newer for local development                                 |
+| Source account | Optional; required only for account-gated content you already own |
 
-## Privacy and Access Boundaries
+## Privacy and access boundaries
 
-Extensions in this repository must not bypass payments, collect credentials, or expose session material to unrelated hosts. Vortex authentication stays on Vortex’s own sign-in page; its extension stores only first-party `vortexscans.org` cookies in Paperback secure state and reads only content Vortex reports as accessible.
+Every cookie jar accepts only explicitly trusted source domains. Authentication cookies never travel to unrelated image hosts, stale responses cannot resurrect a cleared session, and logout preserves only non-account Cloudflare clearance. Novel content is reduced to a small XHTML allowlist before it reaches Paperback’s reader.
+
+No extension in this repository collects credentials, initiates purchases, defeats time or coin locks, or claims access that the source has not granted.
 
 ## Development
 
 ```bash
 npm ci
 npm test
-npm run test:live
 npm run conformance
 npm run bundle
+npm run test:live
 ```
 
-The default suite runs every extension’s deterministic tests. `npm run test:live` currently checks Vortex’s OAuth providers, anonymous account contract, catalog filters, one readable chapter, and one real locked chapter; it never attempts a purchase.
+`npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks both public protocols, including discovery, filters, stable IDs, readable comics and novels, and real locked states; it never attempts a purchase.
 
-Each extension belongs in `src/<ExtensionName>/` with its own config, implementation, static assets, and focused tests. Shared repository commands discover all first-level extension directories, so future sources can be added without rebranding the project.
+Add each extension under `src/<ExtensionName>/` with its own config, implementation, tests, and static assets. Cross-source URL, HTML, cache, request, and cookie behavior belongs in `src/shared/` with regression coverage for every existing consumer.
 
 ## Contributing
 
-Issues and focused pull requests are welcome. Please include a regression test for behavior changes and run `npm test`, `npm run conformance`, and `npm run bundle` before opening a pull request.
+Focused issues and pull requests are welcome. Include a regression test for behavior changes and run `npm test`, `npm run conformance`, and `npm run bundle` before opening a pull request.
 
 ## License
 
-No software license is currently granted. The repository is publicly available for inspection and installation, but copyright remains with its contributors unless a license is added later.
+Copyright is reserved. No permission to copy, modify, or redistribute the software is granted without prior written permission; see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
@@ -110,5 +133,7 @@ Crafted with [Readme Craft](https://github.com/motiful/readme-craft)
 [ci-shield]: https://github.com/michaelasper/paperback-corruptbytes/actions/workflows/ci.yml/badge.svg
 [ci-url]: https://github.com/michaelasper/paperback-corruptbytes/actions/workflows/ci.yml
 [install-page]: https://michaelasper.github.io/paperback-corruptbytes/
+[node-shield]: https://img.shields.io/badge/Node.js-24%2B-339933
+[node-url]: https://nodejs.org/
 [paperback-shield]: https://img.shields.io/badge/Paperback-0.9.x-6f42c1
 [paperback-url]: https://github.com/Paperback-iOS/app

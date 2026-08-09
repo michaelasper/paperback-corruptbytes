@@ -1,10 +1,10 @@
 import { ContentRating, SourceIntents, type ExtensionInfo } from "@paperback/types";
 
 export default {
-  name: "Vortex Scans",
+  name: "Thunder Scans",
   description:
-    "Read Vortex Scans comics and purchased chapters using your first-party Vortex session.",
-  version: "1.0.0-alpha.3",
+    "Read Thunder Scans comics, novels, and purchased chapters with complete discovery and search.",
+  version: "1.0.0-alpha.1",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.MATURE,
@@ -16,9 +16,5 @@ export default {
     SourceIntents.SETTINGS_FORM_PROVIDING,
   ],
   badges: [],
-  developers: [
-    {
-      name: "corruptbytes",
-    },
-  ],
+  developers: [{ name: "corruptbytes" }],
 } satisfies ExtensionInfo;

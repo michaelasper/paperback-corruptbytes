@@ -1,15 +1,16 @@
-description: Paperback 0.9 extensions maintained by CorruptBytes.
+description: High-care Paperback sources for reliable catalogs, search, and legitimately accessible chapters.
 topics:
   - typescript
   - javascript
   - ios
+  - ios-app
   - mobile
   - manga
   - comics
+  - reader
   - manga-reader
-  - comic-reader
+  - web-scraping
+  - web-scraper
   - authentication
   - paperback
-  - paperback-extensions
-  - vortex-scans
 homepage: "https://michaelasper.github.io/paperback-corruptbytes/"

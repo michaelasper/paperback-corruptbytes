@@ -46,6 +46,7 @@ void test("manga IDs, URLs, dates, and HTML text are safe and deterministic", ()
     "https://vortexscans.org/images/cover%20one.webp",
   );
   assert.equal(safeUrl("javascript:alert(1)"), "");
+  assert.equal(safeUrl("http://storage.vortexscans.org/page.webp"), "");
   assert.equal(safeUrl("not a URL"), "");
   assert.equal(parseDate("2026-08-08T12:53:37.949Z")?.toISOString(), "2026-08-08T12:53:37.949Z");
   assert.equal(parseDate("not-a-date"), undefined);

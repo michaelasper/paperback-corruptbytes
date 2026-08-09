@@ -1,6 +1,5 @@
 import {
   ContentRating,
-  URL as PaperbackURL,
   type Chapter,
   type ChapterDetails,
   type MangaInfo,
@@ -9,6 +8,8 @@ import {
 } from "@paperback/types";
 import { load } from "cheerio";
 
+import { contentRatingForTags, plainTextFromHtml, sanitizeChapterHtml } from "../shared/html.js";
+import { resolveHttpsUrl } from "../shared/url.js";
 import type {
   ChapterAccess,
   JsonRecord,
@@ -17,12 +18,9 @@ import type {
 } from "./models.js";
 import { DOMAIN } from "./network.js";
 
-const UNSAFE_PROTOCOL = /^[a-z][a-z\d+.-]*:/i;
 const ENCODED_ID_PUNCTUATION = /[!'()*]/g;
 const PLACEHOLDER_CREATOR = /^(?:-|–|—|_|n\/a|na|unknown|updating|tba)$/i;
 const FALLBACK_COVER_URL = `${DOMAIN}/favicon.ico`;
-const BLOCK_TAG =
-  /<(?:\/)?(?:address|article|blockquote|div|h[1-6]|li|p|pre|section|tr|ul|ol)\b[^>]*>/gi;
 
 const isRecord = (value: unknown): value is JsonRecord =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -71,47 +69,7 @@ const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : [
  * Relative paths are resolved against the source's public domain.
  */
 export const safeUrl = (value: unknown, base: string = DOMAIN): string => {
-  const raw = asText(value);
-  if (!raw || raw.startsWith("data:") || raw.startsWith("javascript:")) return "";
-  if (UNSAFE_PROTOCOL.test(raw) && !/^https?:/i.test(raw)) return "";
-  if (!/^https?:\/\//i.test(raw) && !raw.startsWith("//") && !/^\.?\.?\//.test(raw)) return "";
-
-  try {
-    const baseUrl = new PaperbackURL(base);
-    const baseProtocol = baseUrl.protocol.toLowerCase().replace(/:$/, "");
-    if (baseProtocol !== "http" && baseProtocol !== "https") return "";
-
-    const authority = `${baseUrl.hostname}${baseUrl.port ? `:${baseUrl.port}` : ""}`;
-    let absolute = raw;
-    if (raw.startsWith("//")) {
-      absolute = `${baseProtocol}:${raw}`;
-    } else if (!/^https?:\/\//i.test(raw)) {
-      const relativeMatch = raw.match(/^([^?#]*)([?#][\s\S]*)?$/);
-      const relativePath = relativeMatch?.[1] ?? "";
-      const suffix = relativeMatch?.[2] ?? "";
-      const basePath = baseUrl.path || "/";
-      const directory = basePath.endsWith("/")
-        ? basePath
-        : basePath.slice(0, basePath.lastIndexOf("/") + 1);
-      const unresolvedPath = relativePath.startsWith("/")
-        ? relativePath
-        : `${directory}${relativePath}`;
-      const segments: string[] = [];
-      for (const segment of unresolvedPath.split("/")) {
-        if (!segment || segment === ".") continue;
-        if (segment === "..") segments.pop();
-        else segments.push(segment);
-      }
-      absolute = `${baseProtocol}://${authority}/${segments.join("/")}${suffix}`;
-    }
-
-    const url = new PaperbackURL(encodeURI(absolute));
-    const protocol = url.protocol.toLowerCase().replace(/:$/, "");
-    if (protocol !== "http" && protocol !== "https") return "";
-    return url.toString();
-  } catch {
-    return "";
-  }
+  return resolveHttpsUrl(value, base) ?? "";
 };
 
 /** Encode a slug while making punctuation unambiguous for Paperback IDs. */
@@ -180,23 +138,7 @@ const decodeHtmlText = (value: unknown): string => stripHtml(asText(value) ?? ""
 
 /** Strip markup while retaining paragraph and line-break boundaries and decoding entities. */
 export const stripHtml = (value: string): string => {
-  if (!value) return "";
-  const normalized = value
-    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(BLOCK_TAG, (tag) => (tag.startsWith("</") ? `${tag}\n\n` : tag));
-
-  const $ = load(`<div>${normalized}</div>`, null, false);
-  const text = $("div")
-    .first()
-    .text()
-    .replace(/\u00a0/g, " ");
-  return text
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return plainTextFromHtml(value);
 };
 
 const normalizeCreator = (value: unknown): string | undefined => {
@@ -249,18 +191,7 @@ const tagId = (genre: JsonRecord): string => {
 };
 
 export const contentRatingForGenres = (genres: string[]): ContentRating => {
-  const normalized = genres.map((genre) => genre.trim().toLowerCase());
-  if (
-    normalized.some((genre) =>
-      /\b(?:adult|hentai|porn(?:ographic)?|shotacon|smut|yaoi|yuri)\b/.test(genre),
-    )
-  ) {
-    return ContentRating.ADULT;
-  }
-  if (normalized.some((genre) => /\b(?:ecchi|gore|mature|nsfw|violence|violent)\b/.test(genre))) {
-    return ContentRating.MATURE;
-  }
-  return ContentRating.EVERYONE;
+  return contentRatingForTags(genres);
 };
 
 export const contentRatingForManga = (manga: JsonRecord): ContentRating => {
@@ -664,33 +595,7 @@ const chapterPages = (chapter: JsonRecord): string[] => {
 };
 
 const safeChapterHtml = (content: string): string => {
-  const $ = load(content, null, false);
-  $("script, style, iframe, object, embed, form, base, link, meta, svg, math").remove();
-  $("*").each((_, element) => {
-    const attributes =
-      "attribs" in element && isRecord(element.attribs)
-        ? (element.attribs as Record<string, unknown>)
-        : {};
-    for (const attribute of Object.keys(attributes)) {
-      const normalizedAttribute = attribute.toLowerCase();
-      if (
-        /^on/i.test(attribute) ||
-        ["style", "srcdoc", "srcset", "formaction"].includes(normalizedAttribute)
-      ) {
-        $(element).removeAttr(attribute);
-        continue;
-      }
-
-      if (["href", "src", "poster", "xlink:href"].includes(normalizedAttribute)) {
-        const rawValue = asText(attributes[attribute]);
-        const safeValue = rawValue?.startsWith("#") ? rawValue : safeUrl(rawValue);
-        if (safeValue) $(element).attr(attribute, safeValue);
-        else $(element).removeAttr(attribute);
-      }
-    }
-  });
-  const body = $("body").length ? ($("body").html() ?? "") : ($.root().html() ?? "");
-  return `<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>${body.trim()}</body></html>`;
+  return sanitizeChapterHtml(content, DOMAIN);
 };
 
 const chapterHtmlDetails = (content: string, id: string, mangaId: string): ChapterDetails => ({

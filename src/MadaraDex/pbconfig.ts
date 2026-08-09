@@ -4,7 +4,7 @@ export default {
   name: "MadaraDex",
   description:
     "A high-reliability MadaraDex extension with stable numeric IDs, automatic reader authorization, full discovery, and advanced search.",
-  version: "1.0.0-alpha.2",
+  version: "1.0.0-alpha.3",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.ADULT,

@@ -9,7 +9,7 @@ import { load, type Cheerio, type CheerioAPI } from "cheerio";
 import type { AnyNode } from "domhandler";
 
 import { contentRatingForTags, plainTextFromHtml, sanitizeChapterHtml } from "../shared/html.js";
-import { resolveHttpsUrl } from "../shared/url.js";
+import { resolveHttpsUrl, urlPathSlug } from "../shared/url.js";
 import type { MadaraCard, MadaraCatalogPage, MadaraFilterOptions } from "./models.js";
 import { DOMAIN } from "./network.js";
 import { decryptProtectedPages } from "./protector.js";
@@ -43,12 +43,8 @@ const numericFromCard = (card: Cheerio<AnyNode>): string | undefined => {
 const chapterIdFromHref = (href: string | undefined): string | undefined => {
   const url = resolveHttpsUrl(href, DOMAIN);
   if (!url) return undefined;
-  try {
-    const segment = new URL(url).pathname.split("/").filter(Boolean).at(-1);
-    return segment && /^chapter-[\p{L}\p{N}._~-]+$/u.test(segment) ? segment : undefined;
-  } catch {
-    return undefined;
-  }
+  const segment = urlPathSlug(url);
+  return segment && /^chapter-[\p{L}\p{N}._~-]+$/u.test(segment) ? segment : undefined;
 };
 
 const ratingFrom = (card: Cheerio<AnyNode>): number | undefined => {

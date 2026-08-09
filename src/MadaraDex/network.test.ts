@@ -11,6 +11,20 @@ import {
 } from "./network.js";
 
 describe("MadaraDex routes", () => {
+  it("does not depend on the browser URL global missing from Paperback", () => {
+    const browserURL = globalThis.URL;
+    try {
+      Object.assign(globalThis, { URL: undefined });
+      assert.equal(
+        buildCatalogUrl({ title: "" }, { id: "latest", label: "Latest" }, 1),
+        "https://madaradex.org/title/?m_orderby=latest",
+      );
+      assert.equal(parseMangaUrl("https://madaradex.org/?p=2872"), "2872");
+    } finally {
+      Object.assign(globalThis, { URL: browserURL });
+    }
+  });
+
   it("preserves archived numeric manga IDs and resolves pasted URLs", () => {
     assert.equal(buildMangaUrl("2872"), "https://madaradex.org/?p=2872");
     assert.equal(parseMangaUrl("https://madaradex.org/?p=2872"), "2872");

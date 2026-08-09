@@ -1,4 +1,9 @@
-import type { Request, SearchQuery, SortingOption } from "@paperback/types";
+import {
+  URL as PaperbackURL,
+  type Request,
+  type SearchQuery,
+  type SortingOption,
+} from "@paperback/types";
 
 import type { MadaraSearchMetadata } from "./models.js";
 
@@ -53,37 +58,41 @@ export const buildCatalogUrl = (
     : currentPage === 1
       ? "/title/"
       : `/title/page/${currentPage}/`;
-  const url = new URL(path, DOMAIN);
+  const queryItems: Record<string, string | string[]> = {};
 
   if (search) {
-    url.searchParams.set("s", title);
-    url.searchParams.set("post_type", "wp-manga");
-    for (const genre of selected(metadata?.genres)) url.searchParams.append("genre[]", genre);
-    if (metadata?.genreCondition === "and") url.searchParams.set("op", "1");
+    queryItems.s = title;
+    queryItems.post_type = "wp-manga";
+    const genres = selected(metadata?.genres);
+    if (genres.length > 0) queryItems["genre[]"] = genres;
+    if (metadata?.genreCondition === "and") queryItems.op = "1";
     const author = normalize(metadata?.author);
     const artist = normalize(metadata?.artist);
     const release = normalize(metadata?.release);
-    if (author) url.searchParams.set("author", author);
-    if (artist) url.searchParams.set("artist", artist);
-    if (release) url.searchParams.set("release", release);
-    if (metadata?.adult === "none") url.searchParams.set("adult", "0");
-    if (metadata?.adult === "only") url.searchParams.set("adult", "1");
-    for (const status of selected(metadata?.status)) url.searchParams.append("status[]", status);
+    if (author) queryItems.author = author;
+    if (artist) queryItems.artist = artist;
+    if (release) queryItems.release = release;
+    if (metadata?.adult === "none") queryItems.adult = "0";
+    if (metadata?.adult === "only") queryItems.adult = "1";
+    const statuses = selected(metadata?.status);
+    if (statuses.length > 0) queryItems["status[]"] = statuses;
   }
 
   const sorting = sortingOption?.id || (search ? "relevance" : "latest");
-  if (sorting !== "relevance") url.searchParams.set("m_orderby", sorting);
-  return url.toString();
+  if (sorting !== "relevance") queryItems.m_orderby = sorting;
+  return new PaperbackURL(DOMAIN).setPath(path).setQueryItems(queryItems).toString();
 };
 
 export const buildMangaUrl = (mangaId: string): string => `${DOMAIN}/?p=${numericId(mangaId)}`;
 
 export const parseMangaUrl = (value: string): string | undefined => {
   try {
-    const url = new URL(value.trim());
-    if (url.protocol !== "https:" && url.protocol !== "http:") return undefined;
+    const url = new PaperbackURL(value.trim());
+    if (url.protocol !== "https" && url.protocol !== "http") return undefined;
+    if (url.username || url.password) return undefined;
     if (url.hostname.toLowerCase().replace(/^www\./, "") !== "madaradex.org") return undefined;
-    const postId = url.searchParams.get("p")?.trim();
+    const rawPostId = url.queryItems?.p;
+    const postId = (Array.isArray(rawPostId) ? rawPostId[0] : rawPostId)?.trim();
     return postId && /^\d+$/.test(postId) ? postId : undefined;
   } catch {
     return undefined;

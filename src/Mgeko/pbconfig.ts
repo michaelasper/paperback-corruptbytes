@@ -4,7 +4,7 @@ export default {
   name: "Mgeko",
   description:
     "A high-reliability Mgeko extension with complete discovery, safe-mode search, advanced filters, and stable chapter IDs.",
-  version: "1.0.0-alpha.1",
+  version: "1.0.0-alpha.2",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.ADULT,

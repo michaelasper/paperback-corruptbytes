@@ -1,7 +1,12 @@
 import type { Request, Response } from "@paperback/types";
 
-import { headerValue, SourceRequestInterceptor } from "../shared/http.js";
-import { isHttpsUrlForDomain, isHttpsUrlForHosts } from "../shared/url.js";
+import {
+  DEFAULT_MAX_RESPONSE_BYTES,
+  headerValue,
+  scheduleBoundedResponse,
+  SourceRequestInterceptor,
+} from "../shared/http.js";
+import { isHttpsUrlForHosts } from "../shared/url.js";
 import type { MdxAuthContract } from "./auth.js";
 import { ROOT_URL } from "./network.js";
 
@@ -9,7 +14,14 @@ export const MADARADEX_INTERCEPTOR_ID = "madaradexInterceptor";
 export const CDN_RETRY_HEADER = "x-paperback-madaradex-auth-retry";
 const AUTH_REFRESH_HEADER = "x-mdx-auth-refresh";
 const DOCUMENT_ACCEPT = "text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8";
+const FIRST_PARTY_HOSTS = new Set(["madaradex.org", "www.madaradex.org", "cdn.madaradex.org"]);
 const CDN_HOSTS = new Set(["cdn.madaradex.org"]);
+const CDN_RETRY_RESPONSE_OPTIONS = {
+  sourceName: "MadaraDex CDN",
+  maxBodyBytes: DEFAULT_MAX_RESPONSE_BYTES,
+  isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
+    isHttpsUrlForHosts(requestUrl, CDN_HOSTS) && isHttpsUrlForHosts(responseUrl, CDN_HOSTS),
+} as const;
 
 const withoutHeader = (
   headers: Record<string, string> | undefined,
@@ -28,7 +40,7 @@ export class MadaraDexInterceptor extends SourceRequestInterceptor {
       referer: ROOT_URL,
       acceptLanguage: "en-US,en;q=0.9",
       documentAccept: DOCUMENT_ACCEPT,
-      isFirstPartyUrl: (value) => isHttpsUrlForDomain(value, "madaradex.org"),
+      isFirstPartyUrl: (value) => isHttpsUrlForHosts(value, FIRST_PARTY_HOSTS),
     });
   }
 
@@ -37,11 +49,11 @@ export class MadaraDexInterceptor extends SourceRequestInterceptor {
     const prepared: Request = internalRefresh
       ? { ...request, headers: withoutHeader(request.headers, AUTH_REFRESH_HEADER) }
       : request;
-    if (!internalRefresh && isHttpsUrlForDomain(prepared.url, "madaradex.org")) {
+    if (!internalRefresh && isHttpsUrlForHosts(prepared.url, FIRST_PARTY_HOSTS)) {
       await this.auth.ensureAuthenticated();
     }
     const intercepted = await super.interceptRequest(prepared);
-    if (isHttpsUrlForDomain(intercepted.url, "madaradex.org")) {
+    if (isHttpsUrlForHosts(intercepted.url, FIRST_PARTY_HOSTS)) {
       intercepted.headers = { ...intercepted.headers, "sec-fetch-site": "same-site" };
     }
 
@@ -67,7 +79,10 @@ export class MadaraDexInterceptor extends SourceRequestInterceptor {
         ...request,
         headers: { ...request.headers, [CDN_RETRY_HEADER]: "1", "cache-control": "no-store" },
       };
-      const [retryResponse, retryData] = await Application.scheduleRequest(retryRequest);
+      const { response: retryResponse, data: retryData } = await scheduleBoundedResponse(
+        retryRequest,
+        CDN_RETRY_RESPONSE_OPTIONS,
+      );
       if (retryResponse.status < 200 || retryResponse.status >= 300) {
         throw new Error(
           `MadaraDex CDN authorization failed after one retry (${retryResponse.status}).`,

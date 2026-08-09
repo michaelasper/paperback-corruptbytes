@@ -1,5 +1,12 @@
 import type { Cookie, Request } from "@paperback/types";
 
+import {
+  assertResponseBodyWithinLimit,
+  decodeResponseBody,
+  scheduleBoundedResponse,
+  scheduleRawResponse,
+} from "../shared/http.js";
+import { isHttpsUrlForHosts } from "../shared/url.js";
 import { buildApiUrl } from "./network.js";
 
 export const SIGN_OUT_URL = buildApiUrl("auth/sign-out");
@@ -78,8 +85,19 @@ export const replaceVortexCookies = (store: CookieStore, cookies: Cookie[]): voi
   persistVortexCookies(store, cookies);
 };
 
-const readResponseBody = (buffer: ArrayBuffer): string =>
-  Application.arrayBufferToUTF8String(buffer);
+const ACCOUNT_HOSTS = new Set(["api.vortexscans.org"]);
+const ACCOUNT_RESPONSE_OPTIONS = {
+  sourceName: "Vortex Scans account",
+  maxBodyBytes: 256 * 1_024,
+  isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
+    isHttpsUrlForHosts(requestUrl, ACCOUNT_HOSTS) && isHttpsUrlForHosts(responseUrl, ACCOUNT_HOSTS),
+} as const;
+const SIGN_OUT_RESPONSE_OPTIONS = {
+  sourceName: "Vortex Scans logout",
+  maxBodyBytes: 256 * 1_024,
+  isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
+    isHttpsUrlForHosts(requestUrl, ACCOUNT_HOSTS) && isHttpsUrlForHosts(responseUrl, ACCOUNT_HOSTS),
+} as const;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -95,12 +113,12 @@ const hasIdentifier = (value: unknown): boolean => {
 
 export const fetchAccountStatus = async (store?: CookieStore): Promise<AccountStatus> => {
   let response;
-  let buffer;
+  let data: ArrayBuffer;
   try {
-    [response, buffer] = await Application.scheduleRequest({
-      url: ACCOUNT_URL,
-      method: "GET",
-    });
+    ({ response, data } = await scheduleRawResponse(
+      { url: ACCOUNT_URL, method: "GET" },
+      ACCOUNT_RESPONSE_OPTIONS,
+    ));
   } catch {
     return { authenticated: false };
   }
@@ -113,23 +131,24 @@ export const fetchAccountStatus = async (store?: CookieStore): Promise<AccountSt
   }
 
   try {
-    const data = JSON.parse(readResponseBody(buffer)) as AccountResponse;
-    const hasUser = hasIdentifier(data.user);
-    const hasSession = data.hasSessionCookie === true && hasIdentifier(data.session);
+    assertResponseBodyWithinLimit(data, ACCOUNT_RESPONSE_OPTIONS);
+    const parsed = JSON.parse(decodeResponseBody(data)) as AccountResponse;
+    const hasUser = hasIdentifier(parsed.user);
+    const hasSession = parsed.hasSessionCookie === true && hasIdentifier(parsed.session);
     if (!hasUser && !hasSession) {
       const isDefinitivelyLoggedOut =
-        data.user === null || data.session === null || data.hasSessionCookie === false;
+        parsed.user === null || parsed.session === null || parsed.hasSessionCookie === false;
       if (store && isDefinitivelyLoggedOut) invalidateVortexAuth(store);
       return { authenticated: false };
     }
 
     const displayName =
-      typeof data.user?.name === "string" && data.user.name.trim()
-        ? data.user.name.trim()
+      typeof parsed.user?.name === "string" && parsed.user.name.trim()
+        ? parsed.user.name.trim()
         : undefined;
     const email =
-      typeof data.user?.email === "string" && data.user.email.trim()
-        ? data.user.email.trim()
+      typeof parsed.user?.email === "string" && parsed.user.email.trim()
+        ? parsed.user.email.trim()
         : undefined;
 
     return {
@@ -159,7 +178,7 @@ export const signOut = async (store: CookieStore): Promise<void> => {
   try {
     await Promise.race([
       Promise.resolve()
-        .then(() => Application.scheduleRequest(request))
+        .then(() => scheduleBoundedResponse(request, SIGN_OUT_RESPONSE_OPTIONS))
         .then(() => undefined)
         .catch(() => undefined),
       new Promise<void>((resolve) => {

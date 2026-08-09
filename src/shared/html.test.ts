@@ -3,7 +3,12 @@ import { describe, it } from "node:test";
 
 import { ContentRating } from "@paperback/types";
 
-import { contentRatingForTags, plainTextFromHtml, sanitizeChapterHtml } from "./html.js";
+import {
+  contentRatingForTags,
+  paragraphsToXhtml,
+  plainTextFromHtml,
+  sanitizeChapterHtml,
+} from "./html.js";
 
 describe("shared HTML engine", () => {
   it("sanitizes novel HTML and resolves safe relative resources", () => {
@@ -39,6 +44,86 @@ describe("shared HTML engine", () => {
       plainTextFromHtml("<h2>Synopsis</h2><p>First &amp; second<br>line</p><p>Final.</p>"),
       "Synopsis\n\nFirst & second\nline\n\nFinal.",
     );
+  });
+
+  it("renders API paragraph text as inert, valid XHTML", () => {
+    const html = paragraphsToXhtml([
+      "A <script>alert('no')</script> & B",
+      "Line one\nLine two",
+      "  ",
+      "‘Quoted’ text",
+    ]);
+
+    assert.equal(
+      html,
+      '<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>' +
+        "<p>A &lt;script&gt;alert(&apos;no&apos;)&lt;/script&gt; &amp; B</p>" +
+        "<p>Line one<br />Line two</p>" +
+        "<p>‘Quoted’ text</p>" +
+        "</body></html>",
+    );
+    assert.doesNotMatch(html, /<script>/i);
+  });
+
+  it("removes XML-invalid code points without damaging Unicode text", () => {
+    const html = paragraphsToXhtml([`A\u0000B\u0008C\tD 😀 ${String.fromCharCode(0xd800)}`]);
+
+    assert.match(html, /<p>ABC\tD 😀 <\/p>/);
+    assert.equal(
+      html.split("").some((character) => {
+        const code = character.charCodeAt(0);
+        return code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d;
+      }),
+      false,
+    );
+    assert.equal(html.includes(String.fromCharCode(0xd800)), false);
+  });
+
+  it("drops XML controls, noncharacters, and lone surrogates while preserving text", () => {
+    const c1Controls = String.fromCodePoint(
+      ...Array.from({ length: 0x20 }, (_, index) => 0x80 + index),
+    );
+    const invalid = [
+      "\u0000",
+      "\u000b",
+      "\u007f",
+      c1Controls,
+      String.fromCodePoint(0xfdd0, 0xfdef),
+      String.fromCodePoint(0xfffe, 0xffff, 0x1fffe, 0x1ffff, 0x10fffe, 0x10ffff),
+      "\ud800x\udfff",
+    ].join("");
+
+    const html = paragraphsToXhtml([`tab\tline\nnext\rreturn 😀${invalid}tail`]);
+
+    assert.equal(
+      html,
+      '<html xmlns="http://www.w3.org/1999/xhtml"><head></head><body>' +
+        "<p>tab\tline<br />next\rreturn 😀xtail</p>" +
+        "</body></html>",
+    );
+  });
+
+  it("applies XML code-point safety to sanitized HTML readers too", () => {
+    const invalid = `\u0000\u007f${String.fromCodePoint(0xfdd0, 0xffff)}\ud800`;
+    const html = sanitizeChapterHtml(
+      `<p title="safe${invalid}title">before${invalid}after 😀</p>`,
+      "https://reader.example/chapter/",
+    );
+
+    // parse5 replaces NUL with U+FFFD before serialization; the replacement
+    // is valid XML, while every still-invalid code point must be removed.
+    assert.match(html, /<p title="safe�title">beforeafter 😀<\/p>/);
+    for (const character of html) {
+      const codePoint = character.codePointAt(0)!;
+      assert.equal(
+        codePoint === 0x7f ||
+          (codePoint >= 0x80 && codePoint <= 0x9f) ||
+          (codePoint >= 0xd800 && codePoint <= 0xdfff) ||
+          (codePoint >= 0xfdd0 && codePoint <= 0xfdef) ||
+          (codePoint & 0xffff) >= 0xfffe,
+        false,
+      );
+    }
   });
 
   it("assigns conservative per-title ratings from tags", () => {

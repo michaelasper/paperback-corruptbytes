@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { decodePaperbackIdComponent, encodePaperbackIdComponent } from "./ids.js";
+import { decodePaperbackIdComponent, encodePaperbackIdComponent, validateOpaqueId } from "./ids.js";
 
 describe("Paperback source IDs", () => {
   it("preserves existing safe slugs and escapes the narrower Paperback alphabet", () => {
@@ -18,5 +18,36 @@ describe("Paperback source IDs", () => {
     const raw = "dark-~-mage/魔王";
     assert.equal(decodePaperbackIdComponent(encodePaperbackIdComponent(raw)), raw);
     assert.equal(decodePaperbackIdComponent("legacy%broken"), "legacy%broken");
+  });
+
+  it("validates bounded opaque IDs consistently at parse and request boundaries", () => {
+    assert.equal(validateOpaqueId("Series.v2~draft"), "Series.v2~draft");
+
+    for (const value of [
+      "",
+      ".",
+      "..",
+      " leading",
+      "trailing ",
+      "line\nbreak",
+      "bell\u0007",
+      "delete\u007f",
+      "path/part",
+      "query?part",
+      "hash#part",
+      "back\\slash",
+      "x".repeat(257),
+    ]) {
+      assert.equal(validateOpaqueId(value), undefined, JSON.stringify(value));
+    }
+  });
+
+  it("rejects malformed Unicode that cannot be encoded as a URL component", () => {
+    assert.equal(validateOpaqueId("chapter-\ud800"), undefined);
+    assert.equal(validateOpaqueId("chapter-\udfff"), undefined);
+    assert.equal(validateOpaqueId(`chapter-${String.fromCodePoint(0xfdd0)}`), undefined);
+    assert.equal(validateOpaqueId(`chapter-${String.fromCodePoint(0xffff)}`), undefined);
+    assert.equal(validateOpaqueId(`chapter-${String.fromCodePoint(0x10ffff)}`), undefined);
+    assert.equal(validateOpaqueId("chapter-😀"), "chapter-😀");
   });
 });

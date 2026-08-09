@@ -1,6 +1,12 @@
 import type { Cookie } from "@paperback/types";
 import { load } from "cheerio";
 
+import {
+  assertResponseBodyWithinLimit,
+  decodeResponseBody,
+  scheduleRawResponse,
+} from "../shared/http.js";
+import { isHttpsUrlForHosts } from "../shared/url.js";
 import { PROFILE_URL } from "./network.js";
 
 export interface ThunderCookieStore {
@@ -72,25 +78,43 @@ const profileDisplayName = (html: string): string | undefined => {
 const isProfileUrl = (value: string): boolean =>
   /^https:\/\/en-thunderscans\.com\/profile\/?(?:[?#].*)?$/i.test(value);
 
-export const fetchAccountStatus = async (store?: ThunderCookieStore): Promise<AccountStatus> => {
-  try {
-    const [response, buffer] = await Application.scheduleRequest({
-      url: PROFILE_URL,
-      method: "GET",
-      headers: { "cache-control": "no-store" },
-    });
-    if (response.status < 200 || response.status >= 300 || !isProfileUrl(response.url)) {
-      if (
-        store &&
-        (response.status === 401 || response.status === 403 || /\/login\/?/i.test(response.url))
-      ) {
-        invalidateThunderAuth(store);
-      }
-      return { authenticated: false };
-    }
+const PROFILE_HOSTS = new Set(["en-thunderscans.com"]);
+const PROFILE_RESPONSE_OPTIONS = {
+  sourceName: "Thunder Scans account",
+  maxBodyBytes: 1 * 1_024 * 1_024,
+  isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
+    isHttpsUrlForHosts(requestUrl, PROFILE_HOSTS) && isHttpsUrlForHosts(responseUrl, PROFILE_HOSTS),
+} as const;
 
-    const html = Application.arrayBufferToUTF8String(buffer);
-    const displayName = profileDisplayName(html);
+export const fetchAccountStatus = async (store?: ThunderCookieStore): Promise<AccountStatus> => {
+  let response;
+  let data: ArrayBuffer;
+  try {
+    ({ response, data } = await scheduleRawResponse(
+      {
+        url: PROFILE_URL,
+        method: "GET",
+        headers: { "cache-control": "no-store" },
+      },
+      PROFILE_RESPONSE_OPTIONS,
+    ));
+  } catch {
+    return { authenticated: false };
+  }
+
+  if (response.status < 200 || response.status >= 300 || !isProfileUrl(response.url)) {
+    if (
+      store &&
+      (response.status === 401 || response.status === 403 || /\/login\/?/i.test(response.url))
+    ) {
+      invalidateThunderAuth(store);
+    }
+    return { authenticated: false };
+  }
+
+  try {
+    assertResponseBodyWithinLimit(data, PROFILE_RESPONSE_OPTIONS);
+    const displayName = profileDisplayName(decodeResponseBody(data));
     return { authenticated: true, ...(displayName && { displayName }) };
   } catch {
     return { authenticated: false };

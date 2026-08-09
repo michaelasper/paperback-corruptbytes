@@ -63,7 +63,7 @@ describe("Mgeko network contracts", () => {
 });
 
 describe("Mgeko response handling", () => {
-  const install = (status: number, body: string): Request[] => {
+  const install = (status: number, body: string, responseUrl?: string): Request[] => {
     const requests: Request[] = [];
     Object.assign(globalThis, {
       Application: {
@@ -71,7 +71,7 @@ describe("Mgeko response handling", () => {
         scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
           requests.push(request);
           return [
-            { url: request.url, status, headers: {}, cookies: [] },
+            { url: responseUrl ?? request.url, status, headers: {}, cookies: [] },
             new TextEncoder().encode(body).buffer,
           ];
         },
@@ -84,9 +84,58 @@ describe("Mgeko response handling", () => {
     install(200, "plain text");
     assert.equal(await fetchText({ url: "https://www.mgeko.cc/", method: "GET" }), "plain text");
     await assert.rejects(
-      fetchJson({ url: "https://www.mgeko.cc/browse-comics/data/", method: "GET" }),
-      /Mgeko.*JSON.*browse-comics/i,
+      fetchJson({
+        url: "https://www.mgeko.cc/browse-comics/data/\u0000?token=secret#fragment",
+        method: "GET",
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /Mgeko.*JSON.*browse-comics/i);
+        assert.doesNotMatch(error.message, /token=secret|fragment/i);
+        assert.equal(error.message.includes("\u0000"), false);
+        return true;
+      },
     );
+  });
+
+  it("rejects foreign initial requests and redirected responses before decoding", async () => {
+    const initialRequests = install(200, "private");
+    await assert.rejects(
+      fetchText({ url: "https://evil.example/metadata", method: "GET" }),
+      /response URL was not trusted/i,
+    );
+    assert.equal(initialRequests.length, 0);
+
+    let decodeCalls = 0;
+    install(200, "private", "https://evil.example/redirected");
+    Object.assign(globalThis.Application, {
+      arrayBufferToUTF8String: () => {
+        decodeCalls += 1;
+        return "private";
+      },
+    });
+    await assert.rejects(
+      fetchText({ url: "https://www.mgeko.cc/metadata", method: "GET" }),
+      /response URL was not trusted/i,
+    );
+    assert.equal(decodeCalls, 0);
+  });
+
+  it("rejects oversized responses before decoding them", async () => {
+    let decodeCalls = 0;
+    install(200, "x".repeat(8 * 1_024 * 1_024 + 1));
+    Object.assign(globalThis.Application, {
+      arrayBufferToUTF8String: (buffer: ArrayBuffer) => {
+        decodeCalls += 1;
+        return new TextDecoder().decode(buffer);
+      },
+    });
+
+    await assert.rejects(
+      fetchText({ url: "https://www.mgeko.cc/api?token=secret", method: "GET" }),
+      /Mgeko.*too large/i,
+    );
+    assert.equal(decodeCalls, 0);
   });
 
   it("maps useful HTTP failures without leaking response bodies", async () => {
@@ -97,8 +146,13 @@ describe("Mgeko response handling", () => {
     ] as const) {
       install(status, "private ".repeat(1_000));
       await assert.rejects(
-        fetchText({ url: "https://www.mgeko.cc/private", method: "GET" }),
-        message,
+        fetchText({ url: "https://www.mgeko.cc/private?token=secret", method: "GET" }),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.match(error.message, message);
+          assert.doesNotMatch(error.message, /private |token=secret/i);
+          return true;
+        },
       );
     }
   });

@@ -8,7 +8,7 @@ import type {
   SourceManga,
 } from "@paperback/types";
 
-import { AsyncKeyedCache } from "../shared/async-cache.js";
+import { AsyncKeyedCache, utf8ByteLength } from "../shared/async-cache.js";
 import { isHttpsUrlForDomain, resolveHttpsUrl } from "../shared/url.js";
 import type { MadaraCatalogPage, MadaraFilterOptions, MadaraSearchMetadata } from "./models.js";
 import {
@@ -37,6 +37,11 @@ const searchItem = (manga: SourceManga): SearchResultItem => ({
   imageUrl: manga.mangaInfo.thumbnailUrl,
   contentRating: manga.mangaInfo.contentRating,
 });
+
+const SERIES_CACHE_MAX_BYTES = 2 * 1_024 * 1_024;
+const CHAPTER_CACHE_MAX_BYTES = 4 * 1_024 * 1_024;
+const CATALOG_CACHE_MAX_BYTES = 2 * 1_024 * 1_024;
+const FILTER_CACHE_MAX_BYTES = 1 * 1_024 * 1_024;
 
 const canonicalPastedUrl = (value: string): string | undefined => {
   const match = value
@@ -68,18 +73,26 @@ export class MadaraDexClient {
   private readonly seriesCache = new AsyncKeyedCache<string, string>({
     ttlMs: 120_000,
     maxEntries: 64,
+    maxWeight: SERIES_CACHE_MAX_BYTES,
+    weigh: utf8ByteLength,
   });
   private readonly chapterCache = new AsyncKeyedCache<string, string>({
     ttlMs: 30_000,
     maxEntries: 48,
+    maxWeight: CHAPTER_CACHE_MAX_BYTES,
+    weigh: utf8ByteLength,
   });
   private readonly catalogCache = new AsyncKeyedCache<string, string>({
     ttlMs: 45_000,
     maxEntries: 24,
+    maxWeight: CATALOG_CACHE_MAX_BYTES,
+    weigh: utf8ByteLength,
   });
   private readonly filterCache = new AsyncKeyedCache<"filters", string>({
     ttlMs: 15 * 60_000,
     maxEntries: 1,
+    maxWeight: FILTER_CACHE_MAX_BYTES,
+    weigh: utf8ByteLength,
   });
 
   async getCatalogPage(
@@ -88,32 +101,44 @@ export class MadaraDexClient {
     page: number,
   ): Promise<MadaraCatalogPage> {
     const url = buildCatalogUrl(query, sortingOption, page);
-    const html = await this.catalogCache.get(url, () => fetchText({ url, method: "GET" }));
-    return parseCatalogPage(html);
+    return this.catalogCache.getMapped(
+      url,
+      () => fetchText({ url, method: "GET" }),
+      parseCatalogPage,
+    );
   }
 
   async getFilterOptions(): Promise<MadaraFilterOptions> {
-    const html = await this.filterCache.get("filters", () =>
-      fetchText({ url: FILTERS_URL, method: "GET" }),
+    return this.filterCache.getMapped(
+      "filters",
+      () => fetchText({ url: FILTERS_URL, method: "GET" }),
+      parseFilterOptions,
     );
-    return parseFilterOptions(html);
   }
 
   async getMangaDetails(mangaId: string): Promise<SourceManga> {
-    const html = await this.getSeriesHtml(mangaId);
-    return parseMangaDetails(html, mangaId);
+    const key = `id:${mangaId}`;
+    return this.seriesCache.getMapped(
+      key,
+      () => fetchText({ url: buildMangaUrl(mangaId), method: "GET" }),
+      (html) => parseMangaDetails(html, mangaId),
+    );
   }
 
   async getChapters(sourceManga: SourceManga, sinceDate?: Date): Promise<Chapter[]> {
-    const inline = parseChapters(await this.getSeriesHtml(sourceManga.mangaId), sourceManga);
+    const seriesKey = `id:${sourceManga.mangaId}`;
+    const inline = await this.seriesCache.getMapped(
+      seriesKey,
+      () => fetchText({ url: buildMangaUrl(sourceManga.mangaId), method: "GET" }),
+      (html) => parseChapters(html, sourceManga),
+    );
     const chapters =
       inline.length > 0
         ? inline
-        : parseChapters(
-            await this.chapterCache.get(sourceManga.mangaId, () =>
-              this.fetchAjaxChapters(sourceManga),
-            ),
-            sourceManga,
+        : await this.chapterCache.getMapped(
+            sourceManga.mangaId,
+            () => this.fetchAjaxChapters(sourceManga),
+            (html) => parseChapters(html, sourceManga),
           );
     if (!sinceDate || Number.isNaN(sinceDate.getTime())) return chapters;
     return chapters.filter(
@@ -162,11 +187,15 @@ export class MadaraDexClient {
     const canonical = canonicalPastedUrl(query);
     if (!canonical) return undefined;
     try {
-      const html = await this.seriesCache.get(`url:${canonical}`, () =>
-        fetchText({ url: canonical, method: "GET" }),
+      return await this.seriesCache.getMapped(
+        `url:${canonical}`,
+        () => fetchText({ url: canonical, method: "GET" }),
+        (html) => {
+          const mangaId = parseNumericMangaId(html);
+          if (!mangaId) throw new Error("MadaraDex canonical page did not contain a manga ID.");
+          return { items: [searchItem(parseMangaDetails(html, mangaId))] };
+        },
       );
-      const mangaId = parseNumericMangaId(html);
-      return mangaId ? { items: [searchItem(parseMangaDetails(html, mangaId))] } : undefined;
     } catch {
       return undefined;
     }
@@ -177,12 +206,6 @@ export class MadaraDexClient {
     this.chapterCache.clear();
     this.catalogCache.clear();
     this.filterCache.clear();
-  }
-
-  private getSeriesHtml(mangaId: string): Promise<string> {
-    return this.seriesCache.get(`id:${mangaId}`, () =>
-      fetchText({ url: buildMangaUrl(mangaId), method: "GET" }),
-    );
   }
 
   private async fetchAjaxChapters(sourceManga: SourceManga): Promise<string> {

@@ -14,9 +14,15 @@ import {
 
 const originalApplication = globalThis.Application;
 let requests: Request[] = [];
+let seriesHtml = SERIES_HTML;
+let chaptersHtml = CHAPTERS_HTML;
+let filterHtml = BROWSE_FILTER_HTML;
 
 beforeEach(() => {
   requests = [];
+  seriesHtml = SERIES_HTML;
+  chaptersHtml = CHAPTERS_HTML;
+  filterHtml = BROWSE_FILTER_HTML;
   Object.assign(globalThis, {
     Application: {
       arrayBufferToUTF8String: (buffer: ArrayBuffer) => new TextDecoder().decode(buffer),
@@ -30,10 +36,10 @@ beforeEach(() => {
             num_pages: 2,
             total_results: 30,
           });
-        } else if (request.url.endsWith("/browse-comics/")) body = BROWSE_FILTER_HTML;
-        else if (request.url.includes("/all-chapters/")) body = CHAPTERS_HTML;
+        } else if (request.url.endsWith("/browse-comics/")) body = filterHtml;
+        else if (request.url.includes("/all-chapters/")) body = chaptersHtml;
         else if (request.url.includes("/reader/en/")) body = READER_HTML;
-        else if (request.url.includes("/manga/")) body = SERIES_HTML;
+        else if (request.url.includes("/manga/")) body = seriesHtml;
         return [
           { url: request.url, status: 200, headers: {}, cookies: [] },
           new TextEncoder().encode(body).buffer,
@@ -46,6 +52,20 @@ beforeEach(() => {
 afterEach(() => Object.assign(globalThis, { Application: originalApplication }));
 
 describe("Mgeko client", () => {
+  it("evicts a cached series document when parsing fails", async () => {
+    const client = new MgekoClient();
+    seriesHtml = "<html><body><main>temporary shape</main></body></html>";
+
+    await assert.rejects(client.getMangaDetails("dark-%7E-mage"), /series title/);
+
+    seriesHtml = SERIES_HTML;
+    assert.equal((await client.getMangaDetails("dark-%7E-mage")).mangaId, "dark-%7E-mage");
+    assert.equal(
+      requests.filter((request) => request.url.includes("/manga/dark-~-mage/")).length,
+      2,
+    );
+  });
+
   it("coalesces reusable documents while returning fresh parsed objects", async () => {
     const client = new MgekoClient();
     const [firstFilters, secondFilters] = await Promise.all([

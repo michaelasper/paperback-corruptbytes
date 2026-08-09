@@ -126,4 +126,40 @@ describe("Thunder authentication", () => {
     });
     assert.deepEqual(await fetchAccountStatus(), { authenticated: false });
   });
+
+  it("rejects oversized profile responses before decoding them", async () => {
+    let decodeCalls = 0;
+    Object.assign(globalThis, {
+      Application: {
+        arrayBufferToUTF8String: () => {
+          decodeCalls += 1;
+          return "unexpected";
+        },
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => [
+          { url: request.url, status: 200, headers: {}, cookies: [] },
+          new ArrayBuffer(1 * 1_024 * 1_024 + 1),
+        ],
+      },
+    });
+
+    assert.deepEqual(await fetchAccountStatus(), { authenticated: false });
+    assert.equal(decodeCalls, 0);
+  });
+
+  it("invalidates auth on an oversized rejected profile response", async () => {
+    const store = new MemoryStore();
+    store.cookies = [cookie()];
+    Object.assign(globalThis, {
+      Application: {
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => [
+          { url: request.url, status: 401, headers: {}, cookies: [] },
+          new ArrayBuffer(1 * 1_024 * 1_024 + 1),
+        ],
+      },
+    });
+
+    assert.deepEqual(await fetchAccountStatus(store), { authenticated: false });
+    assert.deepEqual(store.cookies, []);
+    assert.equal(store.invalidations, 1);
+  });
 });

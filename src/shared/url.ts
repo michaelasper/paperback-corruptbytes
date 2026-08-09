@@ -7,6 +7,8 @@ const text = (value: unknown): string | undefined =>
 
 const protocol = (url: PaperbackURL): string => url.protocol.toLowerCase().replace(/:$/, "");
 
+const isDefaultHttpsPort = (url: PaperbackURL): boolean => !url.port || url.port === "443";
+
 const isHttp = (url: PaperbackURL): boolean => {
   const scheme = protocol(url);
   return (
@@ -94,6 +96,7 @@ export const isHttpsUrlForHosts = (value: string, allowedHosts: ReadonlySet<stri
   return (
     parsed !== undefined &&
     protocol(parsed) === "https" &&
+    isDefaultHttpsPort(parsed) &&
     allowedHosts.has(parsed.hostname.toLowerCase())
   );
 };
@@ -101,7 +104,7 @@ export const isHttpsUrlForHosts = (value: string, allowedHosts: ReadonlySet<stri
 /** True only for HTTPS URLs at a domain apex or one of its real subdomains. */
 export const isHttpsUrlForDomain = (value: string, domain: string): boolean => {
   const parsed = parseHttpUrl(value);
-  if (!parsed || protocol(parsed) !== "https") return false;
+  if (!parsed || protocol(parsed) !== "https" || !isDefaultHttpsPort(parsed)) return false;
   const hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
   const expected = domain
     .trim()

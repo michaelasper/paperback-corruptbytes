@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import type { Cookie, Request, Response } from "@paperback/types";
 
+import { DEFAULT_MAX_RESPONSE_BYTES } from "../shared/http.js";
 import { MdxAuthManager, type MdxAuthContract } from "./auth.js";
 import { MadaraDexCookieInterceptor } from "./cookies.js";
 import { CDN_RETRY_HEADER, MadaraDexInterceptor } from "./interceptor.js";
@@ -89,6 +90,10 @@ describe("MadaraDex transport boundaries", () => {
       method: "GET",
       cookies: { mdx_auth: "caller", display: "wide" },
     });
+    const unlistedSubdomain = await store.interceptRequest({
+      url: "https://takeover.madaradex.org/page.webp",
+      method: "GET",
+    });
 
     assert.deepEqual(site.cookies, {
       mdx_fp: "fingerprint",
@@ -97,6 +102,7 @@ describe("MadaraDex transport boundaries", () => {
     });
     assert.deepEqual(cdn.cookies, site.cookies);
     assert.deepEqual(foreign.cookies, { display: "wide" });
+    assert.deepEqual(unlistedSubdomain.cookies, {});
   });
 
   it("does not let an older response resurrect the auth token replaced by a forced refresh", async () => {
@@ -149,6 +155,10 @@ describe("MadaraDex transport boundaries", () => {
       url: "https://images.example/page.webp",
       method: "GET",
     });
+    const unlistedSubdomain = await interceptor.interceptRequest({
+      url: "https://takeover.madaradex.org/page.webp",
+      method: "GET",
+    });
 
     assert.equal(auth.ensures, 1);
     assert.equal(normal.headers?.referer, "https://madaradex.org/");
@@ -162,6 +172,8 @@ describe("MadaraDex transport boundaries", () => {
     assert.equal(internal.headers?.["X-Mdx-Auth-Refresh"], undefined);
     assert.equal(internal.headers?.["x-mdx-auth-refresh"], undefined);
     assert.equal(foreign.headers?.referer, undefined);
+    assert.equal(unlistedSubdomain.headers?.referer, undefined);
+    assert.equal(unlistedSubdomain.headers?.origin, undefined);
   });
 
   it("refreshes and retries a rejected CDN image exactly once", async () => {
@@ -201,5 +213,57 @@ describe("MadaraDex transport boundaries", () => {
       /authorization failed after one retry/i,
     );
     assert.equal(scheduled.length, 1);
+  });
+
+  it("rejects a CDN retry that redirects away from the trusted CDN", async () => {
+    const auth = new FakeAuth();
+    const interceptor = new MadaraDexInterceptor(auth);
+    Object.assign(globalThis.Application, {
+      scheduleRequest: async (): Promise<[Response, ArrayBuffer]> => [
+        {
+          url: "https://evil.example/stolen.webp",
+          status: 200,
+          headers: { "content-type": "image/webp" },
+          cookies: [],
+        },
+        new TextEncoder().encode("foreign-image").buffer,
+      ],
+    });
+    const request: Request = {
+      url: "https://cdn.madaradex.org/manga/page.webp",
+      method: "GET",
+    };
+    const response: Response = { url: request.url, status: 403, headers: {}, cookies: [] };
+
+    await assert.rejects(
+      interceptor.interceptResponse(request, response, new ArrayBuffer(0)),
+      /CDN response URL was not trusted/i,
+    );
+    assert.equal(auth.refreshes, 1);
+    assert.equal(response.status, 403);
+    assert.equal(response.url, request.url);
+  });
+
+  it("rejects an oversized CDN retry before handing bytes to Paperback", async () => {
+    const auth = new FakeAuth();
+    const interceptor = new MadaraDexInterceptor(auth);
+    Object.assign(globalThis.Application, {
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => [
+        { url: request.url, status: 200, headers: {}, cookies: [] },
+        new ArrayBuffer(DEFAULT_MAX_RESPONSE_BYTES + 1),
+      ],
+    });
+    const request: Request = {
+      url: "https://cdn.madaradex.org/manga/page.webp",
+      method: "GET",
+    };
+    const response: Response = { url: request.url, status: 403, headers: {}, cookies: [] };
+
+    await assert.rejects(
+      interceptor.interceptResponse(request, response, new ArrayBuffer(0)),
+      /MadaraDex CDN.*too large/i,
+    );
+    assert.equal(auth.refreshes, 1);
+    assert.equal(response.status, 403);
   });
 });

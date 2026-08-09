@@ -1,6 +1,8 @@
 import type { Request, SearchQuery, SortingOption } from "@paperback/types";
 
+import { fetchSourceJson, fetchSourceText, requestContext } from "../shared/http.js";
 import { decodePaperbackIdComponent, encodePaperbackIdComponent } from "../shared/ids.js";
+import { isHttpsUrlForHosts } from "../shared/url.js";
 import type { HomeFeedId, ThunderSearchMetadata } from "./models.js";
 
 export const DOMAIN = "https://en-thunderscans.com";
@@ -121,35 +123,41 @@ export const buildLoadMoreRequest = (
       ]);
 };
 
-const bodyText = (buffer: ArrayBuffer): string => {
-  try {
-    return Application.arrayBufferToUTF8String(buffer);
-  } catch {
-    return new TextDecoder().decode(buffer);
-  }
-};
+const RESPONSE_HOSTS = new Set(["en-thunderscans.com"]);
+const RESPONSE_OPTIONS = {
+  sourceName: "Thunder Scans",
+  isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
+    isHttpsUrlForHosts(requestUrl, RESPONSE_HOSTS) &&
+    isHttpsUrlForHosts(responseUrl, RESPONSE_HOSTS),
+} as const;
+const AUTH_FAILURE = /request failed with status (?:401|403)\./i;
+const signInError = (): Error =>
+  new Error("Sign in to Thunder Scans from the extension settings and try again.");
 
 export const fetchText = async (request: Request): Promise<string> => {
-  const [response, buffer] = await Application.scheduleRequest(request);
-  if (response.status === 401 || response.status === 403) {
-    throw new Error("Sign in to Thunder Scans from the extension settings and try again.");
+  try {
+    return await fetchSourceText(request, RESPONSE_OPTIONS);
+  } catch (error: unknown) {
+    if (error instanceof Error && AUTH_FAILURE.test(error.message)) {
+      throw signInError();
+    }
+    throw error;
   }
-  if (response.status === 404) throw new Error(`Thunder Scans content not found: ${request.url}`);
-  if (response.status === 429) {
-    throw new Error("Thunder Scans rate limit reached. Please wait and try again.");
-  }
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(`Thunder Scans request failed with status ${response.status}.`);
-  }
-  return bodyText(buffer);
 };
 
 export const fetchJSON = async <T = unknown>(request: Request): Promise<T> => {
-  const body = await fetchText(request);
   try {
-    return JSON.parse(body) as T;
+    return await fetchSourceJson<T>(request, RESPONSE_OPTIONS);
   } catch (error: unknown) {
-    const reason = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to parse JSON from ${request.url}: ${reason}`, { cause: error });
+    if (error instanceof Error && AUTH_FAILURE.test(error.message)) {
+      throw signInError();
+    }
+    if (error instanceof Error && /returned invalid JSON\./i.test(error.message)) {
+      throw new Error(
+        `Failed to parse JSON from ${requestContext(request.url)}: ${error.message}`,
+        { cause: error },
+      );
+    }
+    throw error;
   }
 };

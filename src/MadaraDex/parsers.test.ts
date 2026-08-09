@@ -80,6 +80,19 @@ describe("MadaraDex catalog parsers", () => {
 });
 
 describe("MadaraDex title and reader parsers", () => {
+  it("parses chapter URLs without the browser URL global", () => {
+    const browserURL = globalThis.URL;
+    try {
+      Object.assign(globalThis, { URL: undefined });
+      assert.deepEqual(
+        parseChapters(SERIES_HTML, sourceManga).map((chapter) => chapter.chapterId),
+        ["chapter-0", "chapter-1-1", "chapter-2"],
+      );
+    } finally {
+      Object.assign(globalThis, { URL: browserURL });
+    }
+  });
+
   it("parses complete series metadata without changing the archived ID", () => {
     const result = parseMangaDetails(SERIES_HTML, "2872");
     assert.equal(result.mangaId, "2872");

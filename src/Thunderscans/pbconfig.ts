@@ -4,7 +4,7 @@ export default {
   name: "Thunder Scans",
   description:
     "Read Thunder Scans comics, novels, and purchased chapters with complete discovery and search.",
-  version: "1.0.0-alpha.1",
+  version: "1.0.0-alpha.2",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.MATURE,

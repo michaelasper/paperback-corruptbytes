@@ -23,7 +23,9 @@
     "dev": "paperback-cli serve --watch",
     "logcat": "paperback-cli logcat",
     "test": "tsx --test src/*/*.test.ts",
-    "test:live": "VORTEX_LIVE_TESTS=1 THUNDER_LIVE_TESTS=1 tsx --test src/*/live.test.ts",
+    "test:live": "VORTEX_LIVE_TESTS=1 THUNDER_LIVE_TESTS=1 MGEKO_LIVE_TESTS=1 MADARADEX_LIVE_TESTS=1 tsx --test src/*/live.test.ts",
+    "test:live:madaradex": "MADARADEX_LIVE_TESTS=1 tsx --test src/MadaraDex/live.test.ts",
+    "test:live:mgeko": "MGEKO_LIVE_TESTS=1 tsx --test src/Mgeko/live.test.ts",
     "test:live:thunder": "THUNDER_LIVE_TESTS=1 tsx --test src/Thunderscans/live.test.ts",
     "test:parsers": "tsx --test src/*/parsers.test.ts"
   },

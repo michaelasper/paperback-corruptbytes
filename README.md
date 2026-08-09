@@ -12,6 +12,7 @@
 [![Paperback 0.9.x][paperback-shield]][paperback-url]
 [![CI and Pages][ci-shield]][ci-url]
 [![Node.js 24+][node-shield]][node-url]
+[![License: All rights reserved][license-shield]][license-url]
 
 </div>
 
@@ -33,10 +34,10 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 ## Highlights
 
 - **Read the formats each site actually publishes.** Comic image readers and novel HTML readers preserve source order and reject unsafe content.
-- **Keep existing library progress.** Thunder retains the slug-based manga IDs and numeric chapter IDs used by the earlier Paperback source.
+- **Keep existing library progress.** Each adapter preserves the IDs already present in Paperback exports, including Mgeko slugs, MadaraDex post IDs, and fractional chapter IDs.
 - **Use chapters you legitimately purchased.** First-party sessions expose only content the signed-in site reports as accessible; unavailable chapters remain visibly locked.
 - **Browse complete catalogs.** Discovery feeds, pagination, genres, sorting, advanced filters, title search, and pasted series URLs follow each site’s real protocol.
-- **Sign in without surrendering credentials.** Authentication stays on the source’s own page, and session cookies remain in Paperback’s secure state, source-scoped and blocked from reader CDNs.
+- **Use the right authentication model for each site.** Account sign-in stays on the source’s own page; MadaraDex reader authorization refreshes automatically; Mgeko needs no account.
 - **Fail clearly under site changes.** Cloudflare challenges, rate limits, malformed responses, and locked pages produce targeted errors instead of empty readers or invalid URLs.
 - **Ship changes with evidence.** Shared engine components and source adapters are covered by deterministic tests plus scheduled live public-contract checks.
 
@@ -44,8 +45,24 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 | Extension                                                                        | Status | Best for                                                                                                                |
 | -------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | Alpha  | Complete Madara discovery/search, exported numeric-ID compatibility, and automatically authorized image readers         |
+| <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | Alpha  | A large safe-mode catalog, detailed range/rating/availability filters, and stable comic reader slugs                    |
 | <img src="src/Thunderscans/static/icon.png" alt="" width="28"> **Thunder Scans** | Alpha  | Comics, novels, complete discovery/search, coin-lock visibility, and chapters already available to your Thunder account |
 | <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans**   | Alpha  | Comics, novels, rich filters, paid-state metadata, and chapters already purchased through Vortex                        |
+
+### MadaraDex
+
+- New series, recent chapter updates, trending titles, most viewed, top rated, genres, and all seven live sort modes.
+- Complete genre, matching mode, author, artist, release year, adult-content, and status filters.
+- Numeric WordPress post IDs and exact chapter IDs remain compatible with existing Paperback libraries and reading progress.
+- Anonymous reader authorization, authenticated CDN delivery, retry-once recovery, inline and AJAX chapter lists, and encrypted chapter-protector support.
+
+### Mgeko
+
+- Popular all time, top rated, latest updates, recently added, popular today, genres, and all nine live sort modes.
+- Include/exclude genres, status, format, tags, chapter range, minimum rating, completion, translation, and break-status filters.
+- Safe mode is enabled by default and is sent to Mgeko’s catalog API for every discovery and title-search request.
+- Exact archived series and reader slugs, fractional chapter numbers, deterministic dates, and clean image-page ordering.
 
 ### Thunder Scans
 
@@ -65,13 +82,15 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 1. Open the [repository installation page][install-page] on the device running Paperback.
 2. Add **paperback-corruptbytes** as a repository.
-3. Install Thunder Scans, Vortex Scans, or both.
+3. Install any combination of MadaraDex, Mgeko, Thunder Scans, and Vortex Scans.
 
-## Sign in for purchased chapters
+## Account-backed chapters
 
-Open the extension’s settings and choose its sign-in action. Complete authentication on the source’s first-party page, return to the account or profile page, then tap **Done** so Paperback can import only the resulting source cookies.
+Thunder Scans and Vortex Scans can expose chapters the signed-in site reports as purchased. Open the extension’s settings, choose its sign-in action, complete authentication on the source’s first-party page, return to the account or profile page, then tap **Done** so Paperback can import only the resulting source cookies.
 
 Paperback’s embedded browser does not currently provide a secure external-browser or passkey handoff. If your normal sign-in depends on a passkey, use another first-party method the source offers inside the embedded view.
+
+MadaraDex does not require a user account. Its short-lived anonymous reader token refreshes automatically; the settings screen also offers a manual refresh and first-party verification view. Mgeko does not require authentication.
 
 ## Install from source
 
@@ -86,15 +105,15 @@ Open the LAN URL printed by the development server on your Paperback device. Bui
 
 ## Prerequisites
 
-| Requirement    | Version or purpose                                                |
-| -------------- | ----------------------------------------------------------------- |
-| Paperback      | 0.9.x                                                             |
-| Node.js        | 24 or newer for local development                                 |
-| Source account | Optional; required only for account-gated content you already own |
+| Requirement    | Version or purpose                                                           |
+| -------------- | ---------------------------------------------------------------------------- |
+| Paperback      | 0.9.x                                                                        |
+| Node.js        | 24 or newer for local development                                            |
+| Source account | Optional; used only by account-backed extensions for content you already own |
 
 ## Privacy and access boundaries
 
-Every cookie jar accepts only explicitly trusted source domains. Authentication cookies never travel to unrelated image hosts, stale responses cannot resurrect a cleared session, and logout preserves only non-account Cloudflare clearance. Novel content is reduced to a small XHTML allowlist before it reaches Paperback’s reader.
+Every cookie jar accepts only explicitly trusted source domains. Account sessions never travel to unrelated image hosts, stale responses cannot resurrect a cleared session, and logout preserves only non-account Cloudflare clearance. MadaraDex’s anonymous fingerprint and reader token are shared only with its first-party CDN because the CDN requires both the token and source referer. Novel content is reduced to a small XHTML allowlist before it reaches Paperback’s reader.
 
 No extension in this repository collects credentials, initiates purchases, defeats time or coin locks, or claims access that the source has not granted.
 
@@ -108,7 +127,7 @@ npm run bundle
 npm run test:live
 ```
 
-`npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks both public protocols, including discovery, filters, stable IDs, readable comics and novels, and real locked states; it never attempts a purchase.
+`npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks all four public protocols, including discovery, filters, stable IDs, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
 
 Add each extension under `src/<ExtensionName>/` with its own config, implementation, tests, and static assets. Cross-source URL, HTML, cache, request, and cookie behavior belongs in `src/shared/` with regression coverage for every existing consumer.
 
@@ -124,7 +143,8 @@ Copyright is reserved. No permission to copy, modify, or redistribute the softwa
 
 - [nyzzik/extensions](https://github.com/nyzzik/extensions) for the Asura Scans extension used as an early structural reference.
 - [Inkdex general extensions](https://github.com/inkdex/general-extensions) for current Paperback 0.9.x project conventions.
-- [Keiyoushi extensions-source](https://github.com/keiyoushi/extensions-source) for a second independent Vortex protocol reference.
+- [Keiyoushi extensions-source](https://github.com/keiyoushi/extensions-source) for independent Vortex, Mgeko, and MadaraDex protocol references.
+- [Inkdex Madara extensions](https://github.com/inkdex/madara-extensions) and [Nicartjay PaperbackExt](https://github.com/Nicartjay/PaperbackExt) for additional Madara protocol cross-checks.
 
 ---
 
@@ -133,6 +153,8 @@ Crafted with [Readme Craft](https://github.com/motiful/readme-craft)
 [ci-shield]: https://github.com/michaelasper/paperback-corruptbytes/actions/workflows/ci.yml/badge.svg
 [ci-url]: https://github.com/michaelasper/paperback-corruptbytes/actions/workflows/ci.yml
 [install-page]: https://michaelasper.github.io/paperback-corruptbytes/
+[license-shield]: https://img.shields.io/badge/license-all%20rights%20reserved-5c6370
+[license-url]: LICENSE
 [node-shield]: https://img.shields.io/badge/Node.js-24%2B-339933
 [node-url]: https://nodejs.org/
 [paperback-shield]: https://img.shields.io/badge/Paperback-0.9.x-6f42c1

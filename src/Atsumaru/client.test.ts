@@ -4,7 +4,12 @@ import { describe, it } from "node:test";
 import { ContentRating, type Chapter, type Request, type SourceManga } from "@paperback/types";
 
 import { SourceHttpError } from "../shared/http.js";
-import { AtsumaruClient, AVAILABLE_FILTERS_MAX_BYTES, type AtsumaruTransport } from "./client.js";
+import {
+  AtsumaruClient,
+  AVAILABLE_FILTERS_MAX_BYTES,
+  CANONICAL_MANGA_ID_KEY,
+  type AtsumaruTransport,
+} from "./client.js";
 import type { AtsumaruFetchBodyOptions } from "./network.js";
 import {
   AVAILABLE_FILTERS_URL,
@@ -14,6 +19,7 @@ import {
   buildMangaDocumentUrl,
   buildMangaPageUrl,
   buildNovelChapterUrl,
+  buildSearchUrl,
 } from "./network.js";
 import {
   AVAILABLE_FILTERS_RESPONSE,
@@ -48,6 +54,7 @@ const manga = (mangaId: string, contentType: "comic" | "novel" = "comic"): Sourc
     synopsis: "",
     contentRating: ContentRating.EVERYONE,
     contentType,
+    additionalInfo: { [CANONICAL_MANGA_ID_KEY]: mangaId },
   },
 });
 
@@ -206,9 +213,18 @@ describe("Atsumaru client cache and identity boundaries", () => {
     setDetailResponses(detailTransport);
     const oldSourceManga = await new AtsumaruClient(detailTransport).getMangaDetails("oJQ4o");
     delete oldSourceManga.mangaInfo.additionalInfo?.atsumaruScanlators;
+    delete oldSourceManga.mangaInfo.additionalInfo?.[CANONICAL_MANGA_ID_KEY];
     const persistedSourceManga = JSON.parse(JSON.stringify(oldSourceManga)) as SourceManga;
 
     const chapterTransport = new FakeTransport();
+    chapterTransport.bodies.set(
+      buildSearchUrl({ title: "Archive Hero", metadata: { adult: "all" } }, undefined, 1),
+      {
+        found: 1,
+        page: 1,
+        hits: [{ document: { id: "oJQ4o", title: "Archive Hero", isAdult: false } }],
+      },
+    );
     const chaptersUrl = buildAllChaptersUrl("oJQ4o");
     chapterTransport.bodies.set(chaptersUrl, CHAPTERS_RESPONSE);
 
@@ -218,7 +234,49 @@ describe("Atsumaru client cache and identity boundaries", () => {
     assert.notEqual(chapters[0]?.sourceManga.mangaInfo, persistedSourceManga.mangaInfo);
     assert.deepEqual(chapters[0]?.sourceManga, persistedSourceManga);
     assert.ok(chapters.every(({ version }) => version === "Scanlation scan-manga-oJQ4o"));
-    assert.deepEqual(chapterTransport.calls, [chaptersUrl]);
+    assert.deepEqual(chapterTransport.calls, [
+      buildSearchUrl({ title: "Archive Hero", metadata: { adult: "all" } }, undefined, 1),
+      chaptersUrl,
+    ]);
+  });
+
+  it("resolves a retired persisted manga ID before loading and reading current chapters", async () => {
+    const transport = new FakeTransport();
+    const legacyManga = manga("retired-id");
+    legacyManga.mangaInfo.primaryTitle = "Archive Hero";
+    legacyManga.mangaInfo.secondaryTitles = ["Archive Hero’s Other Name"];
+    delete legacyManga.mangaInfo.additionalInfo?.[CANONICAL_MANGA_ID_KEY];
+    const searchUrl = buildSearchUrl(
+      { title: "Archive Hero", metadata: { adult: "all" } },
+      undefined,
+      1,
+    );
+    transport.bodies.set(searchUrl, {
+      found: 1,
+      page: 1,
+      hits: [{ document: { id: "oJQ4o", title: "Archive Hero", isAdult: false } }],
+    });
+    transport.bodies.set(buildAllChaptersUrl("retired-id"), {
+      chapters: CHAPTERS_RESPONSE.chapters.slice(0, 1),
+    });
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
+    transport.bodies.set(buildChapterUrl("oJQ4o", "wZieNneB"), COMIC_CHAPTER_RESPONSE);
+    const client = new AtsumaruClient(transport);
+
+    const chapters = await client.getChapters(legacyManga);
+    const currentChapter = chapters.find(({ chapterId }) => chapterId === "wZieNneB");
+    assert.ok(currentChapter);
+    assert.equal(chapters.length, 3);
+    assert.ok(chapters.every(({ sourceManga }) => sourceManga.mangaId === "retired-id"));
+    assert.ok(
+      chapters.every(({ additionalInfo }) => additionalInfo?.[CANONICAL_MANGA_ID_KEY] === "oJQ4o"),
+    );
+    assert.equal((await client.getChapterDetails(currentChapter)).mangaId, "retired-id");
+    assert.deepEqual(transport.calls, [
+      searchUrl,
+      buildAllChaptersUrl("oJQ4o"),
+      buildChapterUrl("oJQ4o", "wZieNneB"),
+    ]);
   });
 
   it("preserves scanlator labels across a Paperback JavaScript runtime reload", async () => {
@@ -241,7 +299,10 @@ describe("Atsumaru client cache and identity boundaries", () => {
     const transport = new FakeTransport();
     transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
     const sourceManga = manga("oJQ4o");
-    sourceManga.mangaInfo.additionalInfo = { atsumaruScanlators: "" };
+    sourceManga.mangaInfo.additionalInfo = {
+      atsumaruScanlators: "",
+      [CANONICAL_MANGA_ID_KEY]: "oJQ4o",
+    };
 
     const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
 
@@ -334,7 +395,7 @@ describe("Atsumaru client cache and identity boundaries", () => {
       mangaInfo: {
         ...source.mangaInfo,
         contentType: undefined,
-        additionalInfo: { format: "Novel" },
+        additionalInfo: { format: "Novel", [CANONICAL_MANGA_ID_KEY]: "N7JpR" },
       },
     };
     const chapter: Chapter = {

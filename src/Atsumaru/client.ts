@@ -173,6 +173,7 @@ const CHAPTERS_CACHE_MAX_BYTES = 4 * 1_024 * 1_024;
 const RATING_CACHE_MAX_ENTRIES = 64;
 const RATING_CACHE_MAX_BYTES = 64 * 1_024;
 const SCANLATOR_METADATA_KEY = "atsumaruScanlators";
+export const CANONICAL_MANGA_ID_KEY = "atsumaruCanonicalMangaId";
 const SCANLATOR_METADATA_MAX_BYTES = 64 * 1_024;
 
 /** Preserve optional labels across Paperback runtime reloads without another chapter-list request. */
@@ -196,13 +197,40 @@ const scanlatorsFromManga = (sourceManga: SourceManga): Record<string, string> |
   }
 };
 
+const validMangaId = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  try {
+    buildAllChaptersUrl(value);
+    return value;
+  } catch {
+    return undefined;
+  }
+};
+
+const canonicalMangaIdFromManga = (sourceManga: SourceManga): string | undefined =>
+  validMangaId(sourceManga.mangaInfo.additionalInfo?.[CANONICAL_MANGA_ID_KEY]);
+
+const canonicalMangaIdFromChapter = (chapter: Chapter): string | undefined =>
+  validMangaId(chapter.additionalInfo?.[CANONICAL_MANGA_ID_KEY]);
+
+const titleIdentity = (value: string): string =>
+  value
+    .normalize("NFKC")
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLocaleLowerCase();
+
 const chapterSourceManga = (sourceManga: SourceManga): SourceManga => {
   const storedAdditionalInfo = sourceManga.mangaInfo.additionalInfo;
   // Every Chapter crosses the native bridge with its SourceManga. Avoid
   // returning the app-owned input object and multiplying private lookup
   // metadata across the entire chapter list.
   const additionalInfo = storedAdditionalInfo ? { ...storedAdditionalInfo } : undefined;
-  if (additionalInfo) delete additionalInfo[SCANLATOR_METADATA_KEY];
+  if (additionalInfo) {
+    delete additionalInfo[SCANLATOR_METADATA_KEY];
+    delete additionalInfo[CANONICAL_MANGA_ID_KEY];
+  }
   return {
     ...sourceManga,
     mangaInfo: {
@@ -353,6 +381,41 @@ export class AtsumaruClient {
     return result.catch(() => null);
   }
 
+  /** Resolve Atsumaru IDs replaced by an upstream merge without changing Paperback's library ID. */
+  private async resolveCanonicalMangaId(sourceManga: SourceManga): Promise<string> {
+    const stored = canonicalMangaIdFromManga(sourceManga);
+    if (stored) return stored;
+
+    const original = sourceManga.mangaId;
+    const primaryTitle = sourceManga.mangaInfo.primaryTitle;
+    const titleKeys = new Set(
+      [primaryTitle, ...(sourceManga.mangaInfo.secondaryTitles ?? [])]
+        .map(titleIdentity)
+        .filter(Boolean),
+    );
+    if (titleKeys.size === 0) return original;
+
+    try {
+      const page = await this.getSearchPage(
+        { title: primaryTitle, metadata: { adult: "all" } },
+        undefined,
+        1,
+      );
+      const matches = new Set(
+        page.items
+          .filter((item) => titleKeys.has(titleIdentity(item.title)))
+          .map((item) => validMangaId(item.mangaId))
+          .filter((mangaId): mangaId is string => mangaId !== undefined),
+      );
+      if (matches.has(original)) return original;
+      if (matches.size === 1) return [...matches][0]!;
+    } catch {
+      // Resolution is a compatibility aid. Keep the persisted ID usable when
+      // search is temporarily unavailable or returns a changed contract.
+    }
+    return original;
+  }
+
   async getMangaDetails(mangaId: string): Promise<SourceManga> {
     const pageUrl = buildMangaPageUrl(mangaId);
     const [pageValue, ratingDocument] = await Promise.all([
@@ -368,6 +431,10 @@ export class AtsumaruClient {
           [SCANLATOR_METADATA_KEY]: scanlatorMetadata,
         };
       }
+      sourceManga.mangaInfo.additionalInfo = {
+        ...sourceManga.mangaInfo.additionalInfo,
+        [CANONICAL_MANGA_ID_KEY]: sourceManga.mangaId,
+      };
       return sourceManga;
     } catch (error: unknown) {
       // Page parsing now happens after the two coalesced loads, so retain the
@@ -382,7 +449,7 @@ export class AtsumaruClient {
     _sinceDate?: Date,
     includeAlternates = true,
   ): Promise<Chapter[]> {
-    const mangaId = sourceManga.mangaId;
+    const mangaId = await this.resolveCanonicalMangaId(sourceManga);
     const chaptersUrl = buildAllChaptersUrl(mangaId);
     const chaptersValue = await this.cachedJson(
       this.chaptersCache,
@@ -396,7 +463,13 @@ export class AtsumaruClient {
         chaptersValue,
         chapterSourceManga(sourceManga),
         scanlatorsFromManga(sourceManga),
-      );
+      ).map((chapter) => ({
+        ...chapter,
+        additionalInfo: {
+          ...chapter.additionalInfo,
+          [CANONICAL_MANGA_ID_KEY]: mangaId,
+        },
+      }));
     } catch (error: unknown) {
       this.chaptersCache.delete(chaptersUrl);
       throw error;
@@ -417,9 +490,12 @@ export class AtsumaruClient {
       contentType === "novel" ||
       medium === "novel" ||
       (!contentType && !medium && format === "novel");
+    const mangaId =
+      canonicalMangaIdFromChapter(chapter) ??
+      (await this.resolveCanonicalMangaId(chapter.sourceManga));
     const url = isNovel
-      ? buildNovelChapterUrl(chapter.sourceManga.mangaId, chapter.chapterId)
-      : buildChapterUrl(chapter.sourceManga.mangaId, chapter.chapterId);
+      ? buildNovelChapterUrl(mangaId, chapter.chapterId)
+      : buildChapterUrl(mangaId, chapter.chapterId);
     const body = await this.transport.fetchText({ url, method: "GET" });
     const value = decodeJson(body);
     return isNovel ? parseNovelChapter(value, chapter) : parseComicChapter(value, chapter);

@@ -187,6 +187,8 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
 
   it("preserves library IDs, detail posters, and chapter variants", async () => {
     const matrix = [
+      ["yjzI", "eDUePz"],
+      ["fysb", "iIpspf"],
       ["7nZTg", "wZieNneB"],
       ["lwT7", "h4j-gl"],
       ["68Fv", "JOY5r"],

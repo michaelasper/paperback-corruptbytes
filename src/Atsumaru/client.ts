@@ -332,7 +332,7 @@ export class AtsumaruClient {
 
   async getChapters(
     sourceManga: SourceManga,
-    sinceDate?: Date,
+    _sinceDate?: Date,
     includeAlternates = true,
   ): Promise<Chapter[]> {
     const mangaId = sourceManga.mangaId;
@@ -349,10 +349,11 @@ export class AtsumaruClient {
       throw error;
     }
     if (!includeAlternates) chapters = newestTranslationPerNumber(chapters);
-    if (!sinceDate || Number.isNaN(sinceDate.getTime())) return chapters;
-    return chapters.filter(
-      (chapter) => !chapter.publishDate || chapter.publishDate.getTime() > sinceDate.getTime(),
-    );
+    // Atsumaru's createdAt is an import timestamp, not a reliable first-seen
+    // timestamp. Newly added and restored series can receive complete chapter
+    // backfills dated before Paperback's sinceDate. Always return the endpoint's
+    // authoritative list so Paperback can merge those backfilled chapters.
+    return chapters;
   }
 
   async getChapterDetails(chapter: Chapter): Promise<ChapterDetails> {

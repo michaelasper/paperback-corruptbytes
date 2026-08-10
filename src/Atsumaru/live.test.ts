@@ -3,7 +3,7 @@ import { after, describe, it } from "node:test";
 
 import { ContentRating, type Request, type Response as PaperbackResponse } from "@paperback/types";
 
-import { AtsumaruClient } from "./client.js";
+import { AtsumaruClient, CANONICAL_MANGA_ID_KEY } from "./client.js";
 import type { AtsumaruHomeFeed } from "./models.js";
 import {
   AVAILABLE_FILTERS_URL,
@@ -214,6 +214,10 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
     for (const [mangaId, chapterId] of matrix) {
       const pageValue = await getCachedJson(buildMangaPageUrl(mangaId));
       const sourceManga = parseMangaPage(pageValue, mangaId);
+      sourceManga.mangaInfo.additionalInfo = {
+        ...sourceManga.mangaInfo.additionalInfo,
+        [CANONICAL_MANGA_ID_KEY]: mangaId,
+      };
       const requestStart = chapterRequests.length;
       const chapters = await client.getChapters(sourceManga);
       assert.ok(
@@ -272,6 +276,31 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
     assert.ok(
       new Set(fractionalChapters.map((chapter) => chapter.title ?? "")).size >= 2,
       "N7JpR lost chapter title variants",
+    );
+  });
+
+  it("resolves a legacy library ID to the affected title's complete current chapter range", async () => {
+    const currentMangaId = "68Fv";
+    const current = parseMangaPage(
+      await getCachedJson(buildMangaPageUrl(currentMangaId)),
+      currentMangaId,
+    );
+    const legacy = { ...current, mangaId: "legacy-68Fv" };
+    const client = new AtsumaruClient({
+      fetchText: async (request) => JSON.stringify(await getCachedJson(request.url)),
+    });
+
+    const chapters = await client.getChapters(legacy, undefined, false);
+    const expectedCount = Number(current.mangaInfo.additionalInfo?.chapters);
+
+    assert.ok(Number.isSafeInteger(expectedCount) && expectedCount > 0);
+    assert.equal(chapters.length, expectedCount);
+    assert.equal(Math.max(...chapters.map(({ chapNum }) => chapNum)), expectedCount);
+    assert.ok(chapters.every(({ sourceManga }) => sourceManga.mangaId === "legacy-68Fv"));
+    assert.ok(
+      chapters.every(
+        ({ additionalInfo }) => additionalInfo?.[CANONICAL_MANGA_ID_KEY] === currentMangaId,
+      ),
     );
   });
 

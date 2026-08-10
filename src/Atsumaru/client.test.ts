@@ -201,19 +201,22 @@ describe("Atsumaru client cache and identity boundaries", () => {
     assert.equal(transport.calls.filter((url) => url === chaptersUrl).length, 2);
   });
 
-  it("filters incrementally only when a valid since-date is supplied", async () => {
+  it("returns backfilled chapters even when Paperback supplies a since-date", async () => {
     const transport = new FakeTransport();
     transport.bodies.set(buildMangaPageUrl("oJQ4o"), MANGA_PAGE_RESPONSE);
     transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
     const client = new AtsumaruClient(transport);
 
-    const recent = await client.getChapters(manga("oJQ4o"), new Date(1_695_000_000_000), true);
-    assert.ok(recent.length > 0);
-    assert.ok(
-      recent.every((chapter) => (chapter.publishDate?.getTime() ?? Infinity) > 1_695_000_000_000),
+    const all = await client.getChapters(manga("oJQ4o"), undefined, true);
+    const afterEveryRecordedTimestamp = await client.getChapters(
+      manga("oJQ4o"),
+      new Date(2_000_000_000_000),
+      true,
     );
+    assert.deepEqual(afterEveryRecordedTimestamp, all);
+
     const invalid = await client.getChapters(manga("oJQ4o"), new Date(Number.NaN), true);
-    assert.ok(invalid.length >= recent.length);
+    assert.deepEqual(invalid, all);
   });
 
   it("advances home offsets by consumed API records when malformed cards are skipped", async () => {

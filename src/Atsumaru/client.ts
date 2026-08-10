@@ -198,19 +198,17 @@ const scanlatorsFromManga = (sourceManga: SourceManga): Record<string, string> |
 
 const chapterSourceManga = (sourceManga: SourceManga): SourceManga => {
   const storedAdditionalInfo = sourceManga.mangaInfo.additionalInfo;
-  if (
-    !storedAdditionalInfo ||
-    !Object.prototype.hasOwnProperty.call(storedAdditionalInfo, SCANLATOR_METADATA_KEY)
-  ) {
-    return sourceManga;
-  }
   // Every Chapter crosses the native bridge with its SourceManga. Avoid
-  // multiplying this private lookup metadata across the entire chapter list.
-  const additionalInfo = { ...storedAdditionalInfo };
-  delete additionalInfo[SCANLATOR_METADATA_KEY];
+  // returning the app-owned input object and multiplying private lookup
+  // metadata across the entire chapter list.
+  const additionalInfo = storedAdditionalInfo ? { ...storedAdditionalInfo } : undefined;
+  if (additionalInfo) delete additionalInfo[SCANLATOR_METADATA_KEY];
   return {
     ...sourceManga,
-    mangaInfo: { ...sourceManga.mangaInfo, additionalInfo },
+    mangaInfo: {
+      ...sourceManga.mangaInfo,
+      ...(additionalInfo && { additionalInfo }),
+    },
   };
 };
 

@@ -725,13 +725,19 @@ const scanlatorFromMap = (
   map: AtsumaruScanlatorMap | undefined,
   id: string | undefined,
 ): AtsumaruScanlator | undefined => {
-  if (!map || !id) return undefined;
-  const value = map instanceof Map ? map.get(id) : (map as Readonly<Record<string, unknown>>)[id];
-  if (typeof value === "string") return { id, name: value };
-  const record = asRecord(value);
-  const name = record ? text(record.name, MAX_TITLE_LENGTH) : undefined;
-  const mappedId = record ? opaqueId(record.id) : undefined;
-  return name ? { id: mappedId ?? id, name } : undefined;
+  if (!id) return undefined;
+  if (map) {
+    const value = map instanceof Map ? map.get(id) : (map as Readonly<Record<string, unknown>>)[id];
+    if (typeof value === "string") return { id, name: value };
+    const record = asRecord(value);
+    const name = record ? text(record.name, MAX_TITLE_LENGTH) : undefined;
+    const mappedId = record ? opaqueId(record.id) : undefined;
+    if (name) return { id: mappedId ?? id, name };
+  }
+  // Library entries created before scanlator metadata was persisted still need
+  // a version. Paperback uses it to keep translations distinct while merging
+  // chapters; the exact upstream ID is stable and collision-free.
+  return { id, name: `Scanlation ${id}` };
 };
 
 const chapterTitle = (value: string, number: number): string | undefined => {

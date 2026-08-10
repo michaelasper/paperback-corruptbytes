@@ -4,7 +4,7 @@ export default {
   name: "Atsumaru",
   description:
     "Read Atsumaru comics and novels anonymously with complete discovery, advanced taxonomy search, and stable scanlation-aware chapter IDs.",
-  version: "1.0.0-alpha.3",
+  version: "1.0.0-alpha.4",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.ADULT,

@@ -8,7 +8,7 @@ import config from "./pbconfig.js";
 describe("Atsumaru extension metadata", () => {
   it("advertises the complete anonymous reading surface", () => {
     assert.equal(config.name, "Atsumaru");
-    assert.equal(config.version, "1.0.0-alpha.3");
+    assert.equal(config.version, "1.0.0-alpha.4");
     assert.equal(config.contentRating, ContentRating.ADULT);
     assert.deepEqual(config.capabilities, [
       SourceIntents.CHAPTER_PROVIDING,

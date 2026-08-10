@@ -363,6 +363,41 @@ describe("Atsumaru manga and chapter parsers", () => {
     assert.equal(chapters[2]?.title, "Alternate");
   });
 
+  it("gives persisted titles stable scanlation versions without page metadata", () => {
+    const response = {
+      chapters: [
+        {
+          id: "first-team-chapter",
+          scanlationMangaId: "scanlation-team-a",
+          title: "Chapter 1",
+          number: 1,
+          createdAt: 1_700_000_000_000,
+          index: 0,
+        },
+        {
+          id: "second-team-chapter",
+          scanlationMangaId: "scanlation-team-b",
+          title: "Chapter 1",
+          number: 1,
+          createdAt: 1_700_000_000_001,
+          index: 0,
+        },
+      ],
+    };
+
+    const chapters = parseChapters(response, sourceManga);
+    const reordered = parseChapters({ chapters: [...response.chapters].reverse() }, sourceManga);
+
+    assert.deepEqual(
+      chapters.map(({ version }) => version),
+      ["Scanlation scanlation-team-a", "Scanlation scanlation-team-b"],
+    );
+    assert.deepEqual(
+      Object.fromEntries(chapters.map(({ chapterId, version }) => [chapterId, version])),
+      Object.fromEntries(reordered.map(({ chapterId, version }) => [chapterId, version])),
+    );
+  });
+
   it("retains chapters with optional metadata missing and strictly normalizes timestamps", () => {
     const chapters = parseChapters(
       {

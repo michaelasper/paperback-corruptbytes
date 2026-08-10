@@ -197,7 +197,28 @@ describe("Atsumaru client cache and identity boundaries", () => {
     const chapters = await client.getChapters(manga("oJQ4o"));
 
     assert.equal(chapters.length, 3);
+    assert.ok(chapters.every(({ version }) => version === "Scanlation scan-manga-oJQ4o"));
     assert.deepEqual(transport.calls, [chaptersUrl]);
+  });
+
+  it("recovers pre-alpha.3 persisted manga records in a fresh runtime", async () => {
+    const detailTransport = new FakeTransport();
+    setDetailResponses(detailTransport);
+    const oldSourceManga = await new AtsumaruClient(detailTransport).getMangaDetails("oJQ4o");
+    delete oldSourceManga.mangaInfo.additionalInfo?.atsumaruScanlators;
+    const persistedSourceManga = JSON.parse(JSON.stringify(oldSourceManga)) as SourceManga;
+
+    const chapterTransport = new FakeTransport();
+    const chaptersUrl = buildAllChaptersUrl("oJQ4o");
+    chapterTransport.bodies.set(chaptersUrl, CHAPTERS_RESPONSE);
+
+    const chapters = await new AtsumaruClient(chapterTransport).getChapters(persistedSourceManga);
+
+    assert.notEqual(chapters[0]?.sourceManga, persistedSourceManga);
+    assert.notEqual(chapters[0]?.sourceManga.mangaInfo, persistedSourceManga.mangaInfo);
+    assert.deepEqual(chapters[0]?.sourceManga, persistedSourceManga);
+    assert.ok(chapters.every(({ version }) => version === "Scanlation scan-manga-oJQ4o"));
+    assert.deepEqual(chapterTransport.calls, [chaptersUrl]);
   });
 
   it("preserves scanlator labels across a Paperback JavaScript runtime reload", async () => {

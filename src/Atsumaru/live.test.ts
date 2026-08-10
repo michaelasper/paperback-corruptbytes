@@ -188,8 +188,11 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
 
   it("preserves library IDs, detail posters, and chapter variants", async () => {
     const matrix = [
+      ["i77QI", "n-Tbee"],
       ["yjzI", "eDUePz"],
       ["fysb", "iIpspf"],
+      ["k0UZ", "y1pk4q"],
+      ["0kwh", "93olZ7"],
       ["7nZTg", "wZieNneB"],
       ["lwT7", "h4j-gl"],
       ["68Fv", "JOY5r"],
@@ -216,6 +219,10 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
       assert.ok(
         chapters.some((chapter) => chapter.chapterId === chapterId),
         `${mangaId}/${chapterId} no longer resolves`,
+      );
+      assert.ok(
+        chapters.every((chapter) => typeof chapter.version === "string" && chapter.version.length),
+        `${mangaId} returned a chapter without a bridge-safe scanlation version`,
       );
       assert.deepEqual(
         chapterRequests.slice(requestStart),

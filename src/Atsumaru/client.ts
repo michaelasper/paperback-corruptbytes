@@ -172,6 +172,47 @@ const SERIES_CACHE_MAX_BYTES = 2 * 1_024 * 1_024;
 const CHAPTERS_CACHE_MAX_BYTES = 4 * 1_024 * 1_024;
 const RATING_CACHE_MAX_ENTRIES = 64;
 const RATING_CACHE_MAX_BYTES = 64 * 1_024;
+const SCANLATOR_METADATA_KEY = "atsumaruScanlators";
+const SCANLATOR_METADATA_MAX_BYTES = 64 * 1_024;
+
+/** Preserve optional labels across Paperback runtime reloads without another chapter-list request. */
+const encodeScanlatorMetadata = (pageValue: unknown): string | undefined => {
+  const entries = Object.entries(parseScanlators(pageValue));
+  if (entries.length === 0) return undefined;
+  const encoded = JSON.stringify({
+    scanlators: entries.map(([id, name]) => ({ id, name })),
+  });
+  return utf8ByteLength(encoded) <= SCANLATOR_METADATA_MAX_BYTES ? encoded : undefined;
+};
+
+const scanlatorsFromManga = (sourceManga: SourceManga): Record<string, string> | undefined => {
+  const encoded = sourceManga.mangaInfo.additionalInfo?.[SCANLATOR_METADATA_KEY];
+  if (!encoded || utf8ByteLength(encoded) > SCANLATOR_METADATA_MAX_BYTES) return undefined;
+  try {
+    const scanlators = parseScanlators(JSON.parse(encoded));
+    return Object.keys(scanlators).length > 0 ? scanlators : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+const chapterSourceManga = (sourceManga: SourceManga): SourceManga => {
+  const storedAdditionalInfo = sourceManga.mangaInfo.additionalInfo;
+  if (
+    !storedAdditionalInfo ||
+    !Object.prototype.hasOwnProperty.call(storedAdditionalInfo, SCANLATOR_METADATA_KEY)
+  ) {
+    return sourceManga;
+  }
+  // Every Chapter crosses the native bridge with its SourceManga. Avoid
+  // multiplying this private lookup metadata across the entire chapter list.
+  const additionalInfo = { ...storedAdditionalInfo };
+  delete additionalInfo[SCANLATOR_METADATA_KEY];
+  return {
+    ...sourceManga,
+    mangaInfo: { ...sourceManga.mangaInfo, additionalInfo },
+  };
+};
 
 const ratingWeight = (value: AtsumaruRatingDocument | null): number => {
   if (value === null) return 1;
@@ -321,7 +362,15 @@ export class AtsumaruClient {
       this.getMangaRatingValue(mangaId),
     ]);
     try {
-      return parseMangaPage(pageValue, mangaId, ratingDocument);
+      const sourceManga = parseMangaPage(pageValue, mangaId, ratingDocument);
+      const scanlatorMetadata = encodeScanlatorMetadata(pageValue);
+      if (scanlatorMetadata) {
+        sourceManga.mangaInfo.additionalInfo = {
+          ...sourceManga.mangaInfo.additionalInfo,
+          [SCANLATOR_METADATA_KEY]: scanlatorMetadata,
+        };
+      }
+      return sourceManga;
     } catch (error: unknown) {
       // Page parsing now happens after the two coalesced loads, so retain the
       // previous retry behavior explicitly when the raw detail is malformed.
@@ -337,13 +386,19 @@ export class AtsumaruClient {
   ): Promise<Chapter[]> {
     const mangaId = sourceManga.mangaId;
     const chaptersUrl = buildAllChaptersUrl(mangaId);
-    const [pageValue, chaptersValue] = await Promise.all([
-      this.getMangaPageValue(mangaId),
-      this.cachedJson(this.chaptersCache, chaptersUrl, chaptersUrl, (value) => value),
-    ]);
+    const chaptersValue = await this.cachedJson(
+      this.chaptersCache,
+      chaptersUrl,
+      chaptersUrl,
+      (value) => value,
+    );
     let chapters: Chapter[];
     try {
-      chapters = parseChapters(chaptersValue, sourceManga, parseScanlators(pageValue));
+      chapters = parseChapters(
+        chaptersValue,
+        chapterSourceManga(sourceManga),
+        scanlatorsFromManga(sourceManga),
+      );
     } catch (error: unknown) {
       this.chaptersCache.delete(chaptersUrl);
       throw error;

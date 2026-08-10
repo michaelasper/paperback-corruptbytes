@@ -3,6 +3,7 @@ import { after, describe, it } from "node:test";
 
 import { ContentRating, type Request, type Response as PaperbackResponse } from "@paperback/types";
 
+import { AtsumaruClient } from "./client.js";
 import type { AtsumaruHomeFeed } from "./models.js";
 import {
   AVAILABLE_FILTERS_URL,
@@ -199,16 +200,27 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
       ["uqZM", "5X4jYt"],
     ] as const;
 
+    const chapterRequests: string[] = [];
+    const client = new AtsumaruClient({
+      fetchText: async (request) => {
+        chapterRequests.push(request.url);
+        return JSON.stringify(await getCachedJson(request.url));
+      },
+    });
+
     for (const [mangaId, chapterId] of matrix) {
-      const [pageValue, chapterValue] = await Promise.all([
-        getCachedJson(buildMangaPageUrl(mangaId)),
-        getCachedJson(buildAllChaptersUrl(mangaId)),
-      ]);
+      const pageValue = await getCachedJson(buildMangaPageUrl(mangaId));
       const sourceManga = parseMangaPage(pageValue, mangaId);
-      const chapters = parseChapters(chapterValue, sourceManga, parseScanlators(pageValue));
+      const requestStart = chapterRequests.length;
+      const chapters = await client.getChapters(sourceManga);
       assert.ok(
         chapters.some((chapter) => chapter.chapterId === chapterId),
         `${mangaId}/${chapterId} no longer resolves`,
+      );
+      assert.deepEqual(
+        chapterRequests.slice(requestStart),
+        [buildAllChaptersUrl(mangaId)],
+        `${mangaId} chapter loading made an auxiliary request`,
       );
     }
 

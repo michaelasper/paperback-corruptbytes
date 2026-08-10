@@ -171,11 +171,12 @@ describe("Atsumaru client cache and identity boundaries", () => {
 
   it("uses the complete chapter endpoint and preserves scanlation variants by default", async () => {
     const transport = new FakeTransport();
-    transport.bodies.set(buildMangaPageUrl("oJQ4o"), MANGA_PAGE_RESPONSE);
+    setDetailResponses(transport);
     transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
     const client = new AtsumaruClient(transport);
+    const sourceManga = await client.getMangaDetails("oJQ4o");
 
-    const chapters = await client.getChapters(manga("oJQ4o"), undefined, true);
+    const chapters = await client.getChapters(sourceManga, undefined, true);
     assert.deepEqual(
       chapters.map(({ chapterId }) => chapterId),
       ["h4j-gl", "wZieNneB", "_rmrsb"],
@@ -183,8 +184,50 @@ describe("Atsumaru client cache and identity boundaries", () => {
     assert.equal(chapters[1]?.version, "Archive Team");
     assert.equal(transport.calls.filter((url) => url.includes("allChapters")).length, 1);
 
-    const oneTranslation = await client.getChapters(manga("oJQ4o"), undefined, false);
+    const oneTranslation = await client.getChapters(sourceManga, undefined, false);
     assert.equal(new Set(oneTranslation.map(({ chapNum }) => chapNum)).size, oneTranslation.length);
+  });
+
+  it("does not make authoritative chapters depend on auxiliary manga-page metadata", async () => {
+    const transport = new FakeTransport();
+    const chaptersUrl = buildAllChaptersUrl("oJQ4o");
+    transport.bodies.set(chaptersUrl, CHAPTERS_RESPONSE);
+    const client = new AtsumaruClient(transport);
+
+    const chapters = await client.getChapters(manga("oJQ4o"));
+
+    assert.equal(chapters.length, 3);
+    assert.deepEqual(transport.calls, [chaptersUrl]);
+  });
+
+  it("preserves scanlator labels across a Paperback JavaScript runtime reload", async () => {
+    const detailTransport = new FakeTransport();
+    setDetailResponses(detailTransport);
+    const sourceManga = await new AtsumaruClient(detailTransport).getMangaDetails("oJQ4o");
+    const persistedSourceManga = JSON.parse(JSON.stringify(sourceManga)) as SourceManga;
+    const chapterTransport = new FakeTransport();
+    const chaptersUrl = buildAllChaptersUrl("oJQ4o");
+    chapterTransport.bodies.set(chaptersUrl, CHAPTERS_RESPONSE);
+
+    const chapters = await new AtsumaruClient(chapterTransport).getChapters(persistedSourceManga);
+
+    assert.equal(chapters[1]?.version, "Archive Team");
+    assert.equal(chapters[1]?.sourceManga.mangaInfo.additionalInfo?.atsumaruScanlators, undefined);
+    assert.deepEqual(chapterTransport.calls, [chaptersUrl]);
+  });
+
+  it("strips corrupt private scanlator metadata from chapter bridge payloads", async () => {
+    const transport = new FakeTransport();
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
+    const sourceManga = manga("oJQ4o");
+    sourceManga.mangaInfo.additionalInfo = { atsumaruScanlators: "" };
+
+    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
+
+    assert.equal(
+      Object.hasOwn(chapters[0]!.sourceManga.mangaInfo.additionalInfo ?? {}, "atsumaruScanlators"),
+      false,
+    );
   });
 
   it("evicts malformed chapter envelopes before retrying a corrected response", async () => {

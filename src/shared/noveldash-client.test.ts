@@ -125,4 +125,108 @@ describe("NovelDashClient chapter pagination", () => {
       /only 105 of 106 chapters.*truncated/i,
     );
   });
+
+  it("loads independent chapter pages concurrently within the fixed page budget", async () => {
+    const urls = Array.from({ length: 6 }, (_, index) =>
+      buildNovelDashSeriesUrl(NOVELDASH_TEST_SITE, COMIC_MANGA_ID, index + 1),
+    );
+    const responses = new Map([
+      [
+        urls[0]!,
+        seriesPageHtml({
+          page: 1,
+          totalPages: 6,
+          chapterCount: 105,
+          chapters: Array.from({ length: 100 }, (_, index) => seriesChapter(index + 1)),
+        }),
+      ],
+      [
+        urls[1]!,
+        seriesPageHtml({
+          page: 2,
+          totalPages: 6,
+          chapterCount: 105,
+          chapters: [seriesChapter(101)],
+        }),
+      ],
+      [
+        urls[2]!,
+        seriesPageHtml({
+          page: 3,
+          totalPages: 6,
+          chapterCount: 105,
+          chapters: [seriesChapter(102)],
+        }),
+      ],
+      [
+        urls[3]!,
+        seriesPageHtml({
+          page: 4,
+          totalPages: 6,
+          chapterCount: 105,
+          chapters: [seriesChapter(103)],
+        }),
+      ],
+      [
+        urls[4]!,
+        seriesPageHtml({
+          page: 5,
+          totalPages: 6,
+          chapterCount: 105,
+          chapters: [seriesChapter(104)],
+        }),
+      ],
+      [
+        urls[5]!,
+        seriesPageHtml({
+          page: 6,
+          totalPages: 6,
+          chapterCount: 105,
+          chapters: [seriesChapter(105)],
+        }),
+      ],
+    ]);
+    const waits = new Map<string, Promise<void>>();
+    const releases: (() => void)[] = [];
+    for (const url of urls.slice(1)) {
+      waits.set(
+        url,
+        new Promise((resolve) => {
+          releases.push(resolve);
+        }),
+      );
+    }
+    const requested: string[] = [];
+    Object.assign(globalThis, {
+      Application: {
+        arrayBufferToUTF8String: (buffer: ArrayBuffer) => new TextDecoder().decode(buffer),
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+          requested.push(request.url);
+          await waits.get(request.url);
+          const body = responses.get(request.url);
+          return [
+            {
+              url: request.url,
+              status: body === undefined ? 404 : 200,
+              headers: { "content-type": "text/html" },
+              cookies: [],
+            },
+            new TextEncoder().encode(body ?? "Not found").buffer,
+          ];
+        },
+      },
+    });
+    const client = new NovelDashClient(NOVELDASH_TEST_SITE);
+    const manga = await client.getMangaDetails(COMIC_MANGA_ID);
+
+    const chaptersPromise = client.getChapters(manga, { showLocked: true });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const startedBeforeRelease = requested.filter((url) => urls.slice(1).includes(url));
+    releases.forEach((release) => release());
+    const chapters = await chaptersPromise;
+
+    assert.deepEqual(startedBeforeRelease, urls.slice(1, 5));
+    assert.equal(chapters.length, 105);
+    assert.equal(chapters.at(-1)?.chapNum, 105);
+  });
 });

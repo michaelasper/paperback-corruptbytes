@@ -37,6 +37,7 @@ const SERIES_CACHE_MAX_BYTES = 24 * 1_024 * 1_024;
 const TAXONOMY_MAX_BYTES = 2 * 1_024 * 1_024;
 const READER_MAX_BYTES = 8 * 1_024 * 1_024;
 const MAX_CHAPTER_PAGES = 1_000;
+const CHAPTER_PAGE_CONCURRENCY = 4;
 
 const searchItem = (manga: SourceManga): SearchResultItem => ({
   mangaId: manga.mangaId,
@@ -106,22 +107,36 @@ export class NovelDashClient {
     });
     const pages = [first];
     let totalPages = first.totalPages;
-    for (let page = 2; page <= totalPages; page += 1) {
-      if (page > MAX_CHAPTER_PAGES) {
+    let nextPage = 2;
+    while (nextPage <= totalPages) {
+      if (totalPages > MAX_CHAPTER_PAGES) {
         throw new Error(`${this.site.name} returned too many chapter pages to process safely.`);
       }
-      const parsed = await this.getSeriesPage(sourceManga.mangaId, page, {
-        showLocked,
-        sourceManga,
-      });
-      if (parsed.currentPage !== page) {
-        throw new Error(`${this.site.name} returned the wrong chapter page.`);
+      const waveEnd = Math.min(totalPages, nextPage + CHAPTER_PAGE_CONCURRENCY - 1);
+      const pageNumbers = Array.from(
+        { length: waveEnd - nextPage + 1 },
+        (_, index) => nextPage + index,
+      );
+      const parsedPages = await Promise.all(
+        pageNumbers.map((page) =>
+          this.getSeriesPage(sourceManga.mangaId, page, {
+            showLocked,
+            sourceManga,
+          }),
+        ),
+      );
+      for (const [index, parsed] of parsedPages.entries()) {
+        const page = pageNumbers[index]!;
+        if (parsed.currentPage !== page) {
+          throw new Error(`${this.site.name} returned the wrong chapter page.`);
+        }
+        if (first.seriesId && parsed.seriesId && first.seriesId !== parsed.seriesId) {
+          throw new Error(`${this.site.name} returned chapters for a different series.`);
+        }
+        totalPages = Math.max(totalPages, parsed.totalPages);
+        pages.push(parsed);
       }
-      if (first.seriesId && parsed.seriesId && first.seriesId !== parsed.seriesId) {
-        throw new Error(`${this.site.name} returned chapters for a different series.`);
-      }
-      totalPages = Math.max(totalPages, parsed.totalPages);
-      pages.push(parsed);
+      nextPage = waveEnd + 1;
     }
 
     const chapters = [

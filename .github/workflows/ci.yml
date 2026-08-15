@@ -70,6 +70,7 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
@@ -81,3 +82,10 @@ jobs:
       - name: Deploy GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+      - name: Check out repository contracts
+        uses: actions/checkout@v7
+      - name: Verify published repository
+        env:
+          PUBLISHED_REPOSITORY_URL: ${{ steps.deployment.outputs.page_url }}
+          PUBLISHED_RELEASE_KEY: ${{ github.sha }}
+        run: node scripts/verify-published-repository.mjs

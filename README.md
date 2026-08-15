@@ -108,6 +108,8 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 2. Add **paperback-corruptbytes** as a repository.
 3. Install any combination of Atsumaru, Diva Scans, MadaraDex, Mgeko, Thunder Scans, Valir Scans, and Vortex Scans.
 
+Paperback applies profile visibility before listing repository sources. Valir Scans is marked **Mature**; Diva Scans is correctly marked **Adult** because its catalog includes explicit material. Sign in to Paperback and enable the corresponding content level if either source is absent from the extension list. If the repository was added while a release was still deploying, refresh it after the public repository page shows the new source.
+
 ## Account-backed chapters
 
 Thunder Scans, Valir Scans, Diva Scans, and Vortex Scans can expose chapters the signed-in site reports as purchased. Open the extension’s settings, choose its sign-in action, complete authentication on the source’s first-party page, return to the account or profile page, then tap **Done** so Paperback can import only the resulting source cookies.

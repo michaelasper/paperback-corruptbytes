@@ -20,6 +20,7 @@
     "conformance": "npm run tsc && npm run lint:check && npm run format:check && npm run verify:versions",
     "bundle": "paperback-cli bundle && npm run verify:bundles",
     "verify:bundles": "node scripts/verify-bundles.mjs",
+    "verify:published": "node scripts/verify-published-repository.mjs",
     "verify:versions": "node scripts/verify-version-bumps.mjs",
     "serve": "paperback-cli serve",
     "dev": "paperback-cli serve --watch",

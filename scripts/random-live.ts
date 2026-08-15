@@ -10,9 +10,13 @@ import type {
 } from "@paperback/types";
 
 import { AtsumaruClient } from "../src/Atsumaru/client.js";
+import { DIVA_SCANS_SITE } from "../src/DivaScans/site.js";
 import { MadaraDexClient } from "../src/MadaraDex/client.js";
 import { MgekoClient } from "../src/Mgeko/client.js";
+import { NovelDashClient } from "../src/shared/noveldash-client.js";
+import type { NovelDashSite } from "../src/shared/noveldash-models.js";
 import { ThunderClient } from "../src/Thunderscans/client.js";
+import { VALIR_SCANS_SITE } from "../src/ValirScans/site.js";
 import {
   fetchChapterContent as fetchVortexChapterContent,
   fetchChapterList as fetchVortexChapterList,
@@ -27,7 +31,8 @@ import {
 } from "../src/VortexScans/parsers.js";
 
 const USER_AGENT = "Mozilla/5.0 PaperbackExtensionRandomLive/1.0";
-const REQUEST_TIMEOUT_MS = 25_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+const RETRYABLE_HTTP_STATUSES = new Set([429, 502, 503, 504]);
 const DEFAULT_SAMPLES_PER_SOURCE = 3;
 const MAX_SAMPLES_PER_SOURCE = 8;
 
@@ -36,6 +41,7 @@ interface ProbeStats {
   chapters: number;
   readers: number;
   series: number;
+  unavailable: number;
 }
 
 interface CatalogItem {
@@ -99,8 +105,47 @@ const sampleUnique = <T>(values: readonly T[], count: number, key: (value: T) =>
   return unique.slice(0, count);
 };
 
+const isCatalogTombstone = (error: unknown): boolean => {
+  let current: unknown = error;
+  for (let depth = 0; depth < 4 && current instanceof Error; depth += 1) {
+    if (/(?:content (?:was )?not found|(?:http|status) 404)/i.test(current.message)) return true;
+    current = current.cause;
+  }
+  return false;
+};
+
 const headersFrom = (headers: Headers): Record<string, string> =>
   Object.fromEntries(headers.entries());
+
+const fetchWithTransientRetry = async (
+  request: PaperbackRequest,
+  headers: Headers,
+): Promise<globalThis.Response> => {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(request.url, {
+        method: request.method ?? "GET",
+        headers,
+        body: typeof request.body === "string" ? request.body : undefined,
+        redirect: "follow",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (attempt === 0 && RETRYABLE_HTTP_STATUSES.has(response.status)) {
+        await response.body?.cancel();
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
+      return response;
+    } catch (error: unknown) {
+      lastError = error;
+      if (attempt > 0 || !(error instanceof DOMException) || error.name !== "TimeoutError")
+        throw error;
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  throw lastError;
+};
 
 const originalApplication = globalThis.Application;
 
@@ -130,13 +175,7 @@ Object.assign(globalThis, {
             .join("; "),
         );
       }
-      const response = await fetch(request.url, {
-        method: request.method ?? "GET",
-        headers,
-        body: typeof request.body === "string" ? request.body : undefined,
-        redirect: "follow",
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
+      const response = await fetchWithTransientRetry(request, headers);
       return [
         {
           url: response.url,
@@ -205,12 +244,33 @@ const probeSeries = async (
   readable: (chapter: Chapter) => boolean = () => true,
 ): Promise<ProbeStats> => {
   assert.ok(items.length > 0, `${source} returned an empty randomized catalog sample.`);
-  const selected = sampleUnique(items, samplesPerSource, (item) => item.mangaId);
+  const selected = sampleUnique(items, items.length, (item) => item.mangaId);
   assert.ok(selected.length > 0, `${source} did not expose a unique title to probe.`);
-  const stats: ProbeStats = { catalogItems: items.length, chapters: 0, readers: 0, series: 0 };
+  const target = Math.min(samplesPerSource, selected.length);
+  const stats: ProbeStats = {
+    catalogItems: items.length,
+    chapters: 0,
+    readers: 0,
+    series: 0,
+    unavailable: 0,
+  };
 
   for (const item of selected) {
-    const { manga, chapters } = await load(item.mangaId);
+    if (stats.series >= target) break;
+    let loaded: { chapters: Chapter[]; manga: SourceManga };
+    try {
+      loaded = await load(item.mangaId);
+    } catch (error: unknown) {
+      if (isCatalogTombstone(error)) {
+        stats.unavailable += 1;
+        continue;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(`${item.title} (${item.mangaId}) failed to load: ${message}`, {
+        cause: error,
+      });
+    }
+    const { manga, chapters } = loaded;
     validateManga(manga);
     validateChapters(manga, chapters);
     stats.series += 1;
@@ -219,9 +279,22 @@ const probeSeries = async (
     const candidates = chapters.filter(readable);
     if (candidates.length === 0) continue;
     const chapter = pick(candidates);
-    validateReader(chapter, await read(chapter));
+    try {
+      validateReader(chapter, await read(chapter));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `${item.title} (${item.mangaId}) chapter ${chapter.chapNum} failed: ${message}`,
+        { cause: error },
+      );
+    }
     stats.readers += 1;
   }
+  assert.equal(
+    stats.series,
+    target,
+    `${source} exposed too many stale catalog entries to complete the randomized sample.`,
+  );
   return stats;
 };
 
@@ -265,13 +338,21 @@ const probeAtsumaru = async (): Promise<ProbeStats> => {
 const probeMadaraDex = async (): Promise<ProbeStats> => {
   const client = new MadaraDexClient();
   const sorts = ["latest", "alphabet", "rating", "trending", "views", "new-manga"] as const;
+  const optionalPage = async (
+    query: Parameters<MadaraDexClient["getCatalogPage"]>[0],
+    sorting: Parameters<MadaraDexClient["getCatalogPage"]>[1],
+    page: number,
+  ) => {
+    try {
+      return await client.getCatalogPage(query, sorting, page);
+    } catch (error: unknown) {
+      if (isCatalogTombstone(error)) return { items: [], hasNextPage: false };
+      throw error;
+    }
+  };
   const pages = await Promise.all([
-    client.getCatalogPage(
-      { title: "" },
-      { id: pick(sorts), label: "Random probe" },
-      randomInteger(1, 5),
-    ),
-    client.getCatalogPage(
+    optionalPage({ title: "" }, { id: pick(sorts), label: "Random probe" }, randomInteger(1, 5)),
+    optionalPage(
       { title: pick(searchTerms) },
       { id: pick(sorts), label: "Random probe" },
       randomInteger(1, 2),
@@ -389,11 +470,46 @@ const probeVortex = async (): Promise<ProbeStats> => {
   );
 };
 
+const probeNovelDash = async (site: NovelDashSite): Promise<ProbeStats> => {
+  const client = new NovelDashClient(site);
+  const sorts = ["updated", "trending", "popular", "views", "rating", "longest", "newest"];
+  // These white-label sites share relatively expensive database-backed sort routes. Keep their
+  // randomized catalog probes sequential so the test does not create its own timeout condition.
+  const pages = [
+    await client.getCatalogPage(
+      { title: "" },
+      { id: pick(sorts), label: "Random probe" },
+      randomInteger(1, 8),
+    ),
+    await client.getCatalogPage(
+      { title: pick(searchTerms) },
+      { id: pick(sorts), label: "Random probe" },
+      randomInteger(1, 2),
+    ),
+  ];
+  const items = pages.flatMap((page) => page.items);
+  return probeSeries(
+    site.name,
+    items,
+    async (mangaId) => {
+      const manga = await client.getMangaDetails(mangaId);
+      return {
+        manga,
+        chapters: await client.getChapters(manga, { showLocked: true }),
+      };
+    },
+    (chapter) => client.getChapterDetails(chapter),
+    (chapter) => chapter.additionalInfo?.isAccessible === "true",
+  );
+};
+
 const probes = [
   ["Atsumaru", probeAtsumaru],
+  ["Diva Scans", () => probeNovelDash(DIVA_SCANS_SITE)],
   ["MadaraDex", probeMadaraDex],
   ["Mgeko", probeMgeko],
   ["Thunder", probeThunder],
+  ["Valir Scans", () => probeNovelDash(VALIR_SCANS_SITE)],
   ["Vortex", probeVortex],
 ] as const;
 
@@ -408,7 +524,9 @@ try {
       const stats = await probe();
       output(
         `${name}: ${stats.series} series, ${stats.chapters} chapters, ${stats.readers} readers ` +
-          `from ${stats.catalogItems} catalog items (${Math.round(performance.now() - started)}ms)`,
+          `from ${stats.catalogItems} catalog items` +
+          (stats.unavailable > 0 ? `, ${stats.unavailable} stale skipped` : "") +
+          ` (${Math.round(performance.now() - started)}ms)`,
       );
     } catch (error: unknown) {
       const failure = error instanceof Error ? error : new Error(String(error));

@@ -1,10 +1,10 @@
 import { ContentRating, SourceIntents, type ExtensionInfo } from "@paperback/types";
 
 export default {
-  name: "Mgeko",
+  name: "Diva Scans",
   description:
-    "A high-reliability Mgeko extension with complete discovery, safe-mode search, advanced filters, and stable chapter IDs.",
-  version: "1.0.0-alpha.3",
+    "Complete Diva Scans comics and novels with paginated chapter history, live search filters, and account-aware access states.",
+  version: "1.0.0-alpha.1",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.ADULT,
@@ -16,8 +16,8 @@ export default {
     SourceIntents.SETTINGS_FORM_PROVIDING,
   ],
   badges: [
-    { label: "Stable", textColor: "#FFFFFF", backgroundColor: "#22543D" },
-    { label: "Advanced search", textColor: "#FFFFFF", backgroundColor: "#4A5568" },
+    { label: "Complete chapters", textColor: "#FFFFFF", backgroundColor: "#7C3AED" },
+    { label: "Comics + novels", textColor: "#FFFFFF", backgroundColor: "#374151" },
   ],
   developers: [
     {

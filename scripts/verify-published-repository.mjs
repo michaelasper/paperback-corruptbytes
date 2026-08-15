@@ -1,10 +1,8 @@
-import { lstat, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
 import { assertPinnedDirectory, pinSafeDirectory, readSafeFile } from "./safe-files.mjs";
-import { compareSourceIds, extractExtensionInfo, PB_CONFIG_MAX_BYTES } from "./version-utils.mjs";
 
 const MANIFEST_MAX_BYTES = 4 * 1024 * 1024;
 const INFO_MAX_BYTES = 256 * 1024;
@@ -13,38 +11,59 @@ const ICON_MAX_BYTES = 4 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 20_000;
 const ARTIFACT_CONCURRENCY = 4;
 
-const discoverSources = async (root) => {
-  const sourceRoot = join(root, "src");
-  const sourceRootContext = await pinSafeDirectory(sourceRoot, "src");
-  const entries = await readdir(sourceRoot, { withFileTypes: true });
-  await assertPinnedDirectory(sourceRootContext);
-  const sources = [];
-  for (const entry of entries) {
-    const entryPath = join(sourceRoot, entry.name);
-    const entryStats = await lstat(entryPath);
-    if (entryStats.isSymbolicLink()) {
-      throw new Error(`src/${entry.name} must not be a symbolic link.`);
-    }
-    if (!entryStats.isDirectory()) continue;
-    try {
-      const configStats = await lstat(join(entryPath, "pbconfig.ts"));
-      if (!configStats.isFile() || configStats.isSymbolicLink()) {
-        throw new Error(`src/${entry.name}/pbconfig.ts must be a regular file.`);
-      }
-      const configText = await readSafeFile(join(entryPath, "pbconfig.ts"), {
-        rootPath: sourceRootContext,
-        label: `${entry.name}/pbconfig.ts`,
-        maxBytes: PB_CONFIG_MAX_BYTES,
-      });
-      const metadata = extractExtensionInfo(configText, `${entry.name}/pbconfig.ts`);
-      sources.push(JSON.parse(JSON.stringify({ ...metadata, id: entry.name })));
-    } catch (error) {
-      if (error && typeof error === "object" && error.code === "ENOENT") continue;
-      throw error;
-    }
+const compareSourceIds = (left, right) => (left < right ? -1 : left > right ? 1 : 0);
+
+const parseManifest = (text, label) => {
+  let manifest;
+  try {
+    manifest = JSON.parse(text);
+  } catch {
+    throw new Error(`${label} is not valid JSON.`);
   }
-  await assertPinnedDirectory(sourceRootContext);
-  return sources.sort((left, right) => compareSourceIds(left.id, right.id));
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new Error(`${label} must contain a JSON object.`);
+  }
+  if (!Array.isArray(manifest.sources)) {
+    throw new Error(`${label} does not contain a sources array.`);
+  }
+  const sourceIds = manifest.sources.map((source) => source?.id);
+  if (sourceIds.some((id) => typeof id !== "string" || !id)) {
+    throw new Error(`${label} contains an invalid source ID.`);
+  }
+  if (new Set(sourceIds).size !== sourceIds.length) {
+    throw new Error(`${label} contains duplicate source IDs.`);
+  }
+  return manifest;
+};
+
+const readBundleManifest = async (root) => {
+  const bundleRoot = join(root, "bundles");
+  const bundleRootContext = await pinSafeDirectory(bundleRoot, "bundles");
+  const text = await readSafeFile(join(bundleRoot, "versioning.json"), {
+    rootPath: bundleRootContext,
+    label: "bundles/versioning.json",
+    maxBytes: MANIFEST_MAX_BYTES,
+  });
+  await assertPinnedDirectory(bundleRootContext);
+  return parseManifest(text, "bundles/versioning.json");
+};
+
+const decodeManifestContract = (encoded) => {
+  const maximumEncodedBytes = Math.ceil(MANIFEST_MAX_BYTES / 3) * 4;
+  if (
+    typeof encoded !== "string" ||
+    !encoded ||
+    encoded.length > maximumEncodedBytes ||
+    encoded.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
+  ) {
+    throw new Error("PUBLISHED_EXPECTED_MANIFEST_BASE64 is not valid bounded base64.");
+  }
+  const bytes = Buffer.from(encoded, "base64");
+  if (bytes.byteLength === 0 || bytes.byteLength > MANIFEST_MAX_BYTES) {
+    throw new Error("Published repository contract exceeds its size limit.");
+  }
+  return parseManifest(bytes.toString("utf8"), "Published repository contract");
 };
 
 const publishedBaseUrl = (value) => {
@@ -127,6 +146,7 @@ const runBounded = async (tasks, concurrency) => {
 export const verifyPublishedRepository = async ({
   baseUrl,
   cacheKey,
+  expectedManifest,
   fetchImpl = globalThis.fetch,
   root = process.cwd(),
   timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -136,23 +156,25 @@ export const verifyPublishedRepository = async ({
     throw new Error("A non-empty published release cache key is required.");
   }
   const base = publishedBaseUrl(baseUrl);
-  const expectedSources = await discoverSources(root);
-  const sourceIds = expectedSources.map((source) => source.id);
+  const expected = expectedManifest
+    ? parseManifest(JSON.stringify(expectedManifest), "Expected repository manifest")
+    : await readBundleManifest(root);
+  const expectedSources = expected.sources;
+  const sourceIds = expectedSources.map((source) => source.id).sort(compareSourceIds);
   const manifestUrl = artifactUrl(base, "versioning.json", cacheKey);
-  const manifest = await responseJson({
-    fetchImpl,
-    maxBytes: MANIFEST_MAX_BYTES,
-    timeoutMs,
-    url: manifestUrl,
-  });
-  if (!manifest || typeof manifest !== "object" || !Array.isArray(manifest.sources)) {
-    throw new Error("Published versioning.json does not contain a sources array.");
-  }
+  const manifest = parseManifest(
+    JSON.stringify(
+      await responseJson({
+        fetchImpl,
+        maxBytes: MANIFEST_MAX_BYTES,
+        timeoutMs,
+        url: manifestUrl,
+      }),
+    ),
+    "Published versioning.json",
+  );
 
   const publishedIds = manifest.sources.map((source) => source?.id);
-  if (publishedIds.some((id) => typeof id !== "string")) {
-    throw new Error("Published versioning.json contains an invalid source ID.");
-  }
   const uniquePublishedIds = [...new Set(publishedIds)].sort(compareSourceIds);
   const missing = sourceIds.filter((id) => !uniquePublishedIds.includes(id));
   const unexpected = uniquePublishedIds.filter((id) => !sourceIds.includes(id));
@@ -165,8 +187,15 @@ export const verifyPublishedRepository = async ({
   for (const expected of expectedSources) {
     const listed = manifest.sources.find((source) => source.id === expected.id);
     if (!isDeepStrictEqual(listed, expected)) {
-      throw new Error(`${expected.id} published metadata is stale compared with pbconfig.ts.`);
+      throw new Error(
+        `${expected.id} published metadata is stale compared with the bundle contract.`,
+      );
     }
+  }
+  if (!isDeepStrictEqual(manifest, expected)) {
+    throw new Error(
+      "Published versioning.json is stale compared with the immutable bundle contract.",
+    );
   }
 
   const tasks = sourceIds.flatMap((id) => {
@@ -226,7 +255,10 @@ if (isMain) {
     process.exitCode = 1;
   } else {
     try {
-      const result = await verifyPublishedRepository({ baseUrl, cacheKey });
+      const expectedManifest = process.env.PUBLISHED_EXPECTED_MANIFEST_BASE64
+        ? decodeManifestContract(process.env.PUBLISHED_EXPECTED_MANIFEST_BASE64)
+        : undefined;
+      const result = await verifyPublishedRepository({ baseUrl, cacheKey, expectedManifest });
       console.log(
         `Verified ${result.sourceIds.length} published sources and ${result.artifactCount} artifacts.`,
       );

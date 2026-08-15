@@ -25,20 +25,18 @@ const sourceInfo = (id, version = "1.0.0") => ({
   version,
 });
 
-const sourceRoot = async (versions) => {
+const bundleRoot = async (versions) => {
   const root = await mkdtemp(join(tmpdir(), "paperback-published-"));
   temporaryRoots.push(root);
-  for (const [id, version] of Object.entries(versions)) {
-    await mkdir(join(root, "src", id), { recursive: true });
-    const info = sourceInfo(id, version);
-    const { id: _, ...config } = info;
-    await writeFile(
-      join(root, "src", id, "pbconfig.ts"),
-      `export default ${JSON.stringify(config)};\n`,
-    );
-  }
+  await mkdir(join(root, "bundles"), { recursive: true });
+  await writeFile(join(root, "bundles", "versioning.json"), JSON.stringify(manifest(versions)));
   return root;
 };
+
+const manifest = (versions) => ({
+  repository: { name: "Repo" },
+  sources: Object.entries(versions).map(([id, version]) => sourceInfo(id, version)),
+});
 
 const response = (url, body, contentType) => ({
   ok: true,
@@ -61,11 +59,7 @@ const publishedFetch = (versions, requested) => async (input) => {
   const pathname = parsed.pathname.replace("/repo/", "");
   const sources = Object.entries(versions).map(([id, version]) => sourceInfo(id, version));
   if (pathname === "versioning.json") {
-    return response(
-      url,
-      JSON.stringify({ repository: { name: "Repo" }, sources }),
-      "application/json",
-    );
+    return response(url, JSON.stringify(manifest(versions)), "application/json");
   }
   const match = pathname.match(/^([^/]+)\/(info\.json|index\.js|static\/icon\.png)$/);
   if (!match?.[1] || !match[2]) throw new Error(`Unexpected URL: ${url}`);
@@ -78,8 +72,25 @@ const publishedFetch = (versions, requested) => async (input) => {
 };
 
 describe("published Paperback repository verification", () => {
+  it("accepts the immutable bundle contract without loading build dependencies", async () => {
+    const expectedManifest = {
+      repository: { name: "Repo" },
+      sources: [sourceInfo("Alpha")],
+    };
+
+    const result = await verifyPublishedRepository({
+      baseUrl: "https://example.test/repo/",
+      cacheKey: "release-sha",
+      expectedManifest,
+      fetchImpl: publishedFetch({ Alpha: "1.0.0" }, []),
+      root: "/checkout-without-node-modules-or-bundles",
+    });
+
+    assert.deepEqual(result.sourceIds, ["Alpha"]);
+  });
+
   it("proves every local source is in the cache-busted manifest with reachable artifacts", async () => {
-    const root = await sourceRoot({ Alpha: "1.0.0", Beta: "1.0.0" });
+    const root = await bundleRoot({ Alpha: "1.0.0", Beta: "1.0.0" });
     const requested = [];
 
     const result = await verifyPublishedRepository({
@@ -96,28 +107,26 @@ describe("published Paperback repository verification", () => {
   });
 
   it("rejects a successful deployment whose manifest silently omits a new source", async () => {
-    const root = await sourceRoot({ Alpha: "1.0.0", Beta: "1.0.0" });
+    const expectedManifest = manifest({ Alpha: "1.0.0", Beta: "1.0.0" });
 
     await assert.rejects(
       verifyPublishedRepository({
         baseUrl: "https://example.test/repo/",
         cacheKey: "release-sha",
+        expectedManifest,
         fetchImpl: publishedFetch({ Alpha: "1.0.0" }, []),
-        root,
       }),
       /missing.*Beta/i,
     );
   });
 
   it("rejects stale published metadata even when every source ID is present", async () => {
-    const root = await sourceRoot({ Alpha: "1.0.1" });
-
     await assert.rejects(
       verifyPublishedRepository({
         baseUrl: "https://example.test/repo/",
         cacheKey: "release-sha",
+        expectedManifest: manifest({ Alpha: "1.0.1" }),
         fetchImpl: publishedFetch({ Alpha: "1.0.0" }, []),
-        root,
       }),
       /Alpha.*stale|stale.*Alpha/i,
     );

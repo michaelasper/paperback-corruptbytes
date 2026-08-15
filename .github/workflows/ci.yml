@@ -16,6 +16,8 @@ jobs:
   validate:
     name: Validate and bundle
     runs-on: ubuntu-latest
+    outputs:
+      published-contract: ${{ steps.published-contract.outputs.manifest }}
     permissions:
       contents: read
     steps:
@@ -38,6 +40,9 @@ jobs:
         run: npm run conformance
       - name: Build Paperback repository
         run: npm run bundle
+      - name: Capture published repository contract
+        id: published-contract
+        run: echo "manifest=$(base64 -w0 bundles/versioning.json)" >> "$GITHUB_OUTPUT"
       - name: Upload GitHub Pages artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v5
@@ -86,6 +91,7 @@ jobs:
         uses: actions/checkout@v7
       - name: Verify published repository
         env:
+          PUBLISHED_EXPECTED_MANIFEST_BASE64: ${{ needs.validate.outputs.published-contract }}
           PUBLISHED_REPOSITORY_URL: ${{ steps.deployment.outputs.page_url }}
           PUBLISHED_RELEASE_KEY: ${{ github.sha }}
         run: node scripts/verify-published-repository.mjs

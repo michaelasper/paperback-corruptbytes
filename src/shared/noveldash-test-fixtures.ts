@@ -76,8 +76,12 @@ export const seriesPageHtml = (options: SeriesPageFixtureOptions = {}): string =
       genres: [
         { name: "Fantasy", slug: "fantasy" },
         { name: "Adult", slug: "adult" },
+        { name: "Slice of Life", slug: "slice-of-life" },
       ],
-      tags: [{ name: "Time Travel", slug: "time-travel" }],
+      tags: [
+        { name: "Time Travel", slug: "time-travel" },
+        { name: "School Life", slug: "school-life" },
+      ],
       team: { name: "Fixture Team" },
     },
     chapters: options.chapters ?? [

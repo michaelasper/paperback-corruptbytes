@@ -4,7 +4,7 @@ export default {
   name: "Vortex Scans",
   description:
     "Read Vortex Scans comics and purchased chapters using your first-party Vortex session.",
-  version: "1.0.0-alpha.7",
+  version: "1.0.0-alpha.8",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.MATURE,

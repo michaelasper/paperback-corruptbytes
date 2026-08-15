@@ -3,6 +3,7 @@ import { after, describe, it } from "node:test";
 import {
   assertNovelDashCatalogContract,
   assertNovelDashCompleteHistory,
+  assertNovelDashMetadataContract,
   assertNovelDashReaderContract,
   installNovelDashLiveApplication,
 } from "../shared/test-fixtures/noveldash-live.js";
@@ -25,6 +26,18 @@ describe("Diva Scans live public contract", { skip: !live }, () => {
       title: "I'll Give You the Most Rotten Thing",
       minimumChapters: 101,
       readableAfterChapter: 100,
+    });
+  });
+
+  it("serves real covers and safe multi-word metadata IDs", async () => {
+    await assertNovelDashMetadataContract(DIVA_SCANS_SITE, {
+      kind: "comic",
+      slug: "the-secret-that-made-you-cry",
+      title: "The Secret That Made You Cry",
+      expectedTags: [
+        { id: "school-life", title: "School Life" },
+        { id: "slice-of-life", title: "Slice of Life" },
+      ],
     });
   });
 

@@ -4,7 +4,7 @@ export default {
   name: "Valir Scans",
   description:
     "Complete Valir Scans comics and novels with paginated chapter history, live search filters, and account-aware access states.",
-  version: "1.0.0-alpha.3",
+  version: "1.0.0-alpha.4",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.MATURE,

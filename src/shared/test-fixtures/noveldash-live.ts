@@ -8,6 +8,7 @@ import type {
   SourceManga,
 } from "@paperback/types";
 
+import { decodePaperbackIdComponent, encodePaperbackIdComponent } from "../ids.js";
 import { fetchNovelDashAccountStatus } from "../noveldash-auth.js";
 import { NovelDashClient } from "../noveldash-client.js";
 import type { NovelDashRouteKind, NovelDashSite } from "../noveldash-models.js";
@@ -23,6 +24,10 @@ export interface NovelDashLiveSeries {
   minimumChapters?: number;
   internalSlug?: string;
   readableAfterChapter?: number;
+}
+
+export interface NovelDashLiveMetadata extends NovelDashLiveSeries {
+  expectedTags: readonly { id: string; title: string }[];
 }
 
 const headersFrom = (headers: Headers): Record<string, string> =>
@@ -66,6 +71,39 @@ const validateManga = (manga: SourceManga, expectedTitle: string): void => {
   assert.equal(manga.mangaInfo.primaryTitle, expectedTitle);
   assert.match(manga.mangaInfo.thumbnailUrl, /^https:\/\//);
   assert.ok(manga.mangaInfo.synopsis.length > 0);
+  for (const group of manga.mangaInfo.tagGroups ?? []) {
+    assert.equal(
+      encodePaperbackIdComponent(decodePaperbackIdComponent(group.id)),
+      group.id,
+      `Invalid Paperback tag-group ID: ${group.id}`,
+    );
+    for (const tag of group.tags) {
+      assert.equal(
+        encodePaperbackIdComponent(decodePaperbackIdComponent(tag.id)),
+        tag.id,
+        `Invalid Paperback tag ID: ${tag.id}`,
+      );
+    }
+  }
+};
+
+const validateImage = async (site: NovelDashSite, imageUrl: string): Promise<void> => {
+  const response = await fetch(imageUrl, {
+    headers: { referer: `${site.domain}/`, "user-agent": USER_AGENT },
+    redirect: "follow",
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  try {
+    assert.equal(response.ok, true, `Catalog cover returned HTTP ${response.status}.`);
+    assert.match(response.headers.get("content-type") ?? "", /^image\//i);
+    const hostname = new URL(response.url).hostname;
+    assert.ok(
+      hostname === site.host || hostname === `www.${site.host}` || hostname === site.mediaHost,
+      `Catalog cover redirected to untrusted host ${hostname}.`,
+    );
+  } finally {
+    await response.body?.cancel();
+  }
 };
 
 const validateChapterList = (manga: SourceManga, chapters: Chapter[]): void => {
@@ -136,6 +174,25 @@ export const assertNovelDashCatalogContract = async (site: NovelDashSite): Promi
     assert.ok(item.mangaId.length > 0);
     assert.ok(item.title.length > 0);
     assert.match(item.imageUrl, /^https:\/\//);
+  }
+  await validateImage(site, catalog.items[0]!.imageUrl);
+};
+
+export const assertNovelDashMetadataContract = async (
+  site: NovelDashSite,
+  series: NovelDashLiveMetadata,
+): Promise<void> => {
+  const client = new NovelDashClient(site);
+  const manga = await client.getMangaDetails(encodeNovelDashMangaId(series.kind, series.slug));
+  validateManga(manga, series.title);
+  await validateImage(site, manga.mangaInfo.thumbnailUrl);
+  const tags = (manga.mangaInfo.tagGroups ?? []).flatMap((group) => group.tags);
+  for (const expected of series.expectedTags) {
+    assert.deepEqual(
+      tags.find((tag) => tag.id === expected.id),
+      expected,
+      `${series.title} did not preserve ${expected.title}'s safe ID.`,
+    );
   }
 };
 

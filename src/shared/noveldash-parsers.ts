@@ -71,6 +71,7 @@ export interface ParsedNovelDashSeriesPage {
 }
 
 const FALLBACK_MAX_CHAPTER_PAGES = 1_000;
+const mediaHostsBySite = new WeakMap<NovelDashSite, ReadonlySet<string>>();
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -126,17 +127,25 @@ const titleCase = (value: string): string =>
 const routeKind = (value: unknown, fallback: NovelDashRouteKind): NovelDashRouteKind =>
   text(value) ? routeKindForSeriesType(value) : fallback;
 
+const mediaHostsFor = (site: NovelDashSite): ReadonlySet<string> => {
+  const cached = mediaHostsBySite.get(site);
+  if (cached) return cached;
+  const hosts = new Set([site.host, `www.${site.host}`, site.mediaHost]);
+  mediaHostsBySite.set(site, hosts);
+  return hosts;
+};
+
 const mediaUrl = (site: NovelDashSite, value: unknown): string | undefined => {
   const raw = text(value);
   if (!raw) return undefined;
   let candidate = raw;
-  const nextImage = resolveHttpsUrl(raw, site.domain);
-  if (nextImage) {
+  if (raw.includes("/_next/image")) {
+    const nextImage = resolveHttpsUrl(raw, site.domain);
     try {
-      const parsed = new PaperbackURL(nextImage);
-      const queryValue = parsed.queryItems?.url;
+      const parsed = nextImage ? new PaperbackURL(nextImage) : undefined;
+      const queryValue = parsed?.queryItems?.url;
       const wrapped = Array.isArray(queryValue) ? queryValue[0] : queryValue;
-      if (parsed.path === "/_next/image" && wrapped) candidate = wrapped;
+      if (parsed?.path === "/_next/image" && wrapped) candidate = wrapped;
     } catch {
       // The shared resolver below remains authoritative for malformed wrappers.
     }
@@ -144,20 +153,7 @@ const mediaUrl = (site: NovelDashSite, value: unknown): string | undefined => {
 
   const resolved = resolveHttpsUrl(candidate, site.domain);
   if (!resolved) return undefined;
-  try {
-    const parsed = new PaperbackURL(resolved);
-    if (
-      (parsed.hostname === site.host || parsed.hostname === `www.${site.host}`) &&
-      (parsed.path.startsWith("/uploads/") || parsed.path.startsWith("/api/"))
-    ) {
-      parsed.setHostname(site.mediaHost).setPort(undefined).setUsername().setPassword();
-      return parsed.toString();
-    }
-  } catch {
-    return undefined;
-  }
-  const allowedHosts = new Set([site.host, `www.${site.host}`, site.mediaHost]);
-  return isHttpsUrlForHosts(resolved, allowedHosts) ? resolved : undefined;
+  return isHttpsUrlForHosts(resolved, mediaHostsFor(site)) ? resolved : undefined;
 };
 
 export const normalizeNovelDashMediaUrl = mediaUrl;
@@ -279,10 +275,23 @@ const bookMetadata = (html: string): BookMetadata => {
   return {};
 };
 
-const taxonomyNames = (value: unknown): string[] =>
-  Array.isArray(value)
-    ? uniqueStrings(value.map((entry) => record(entry)?.name ?? record(entry)?.slug))
-    : [];
+const taxonomyTags = (value: unknown): Tag[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const tags: Tag[] = [];
+  for (const entry of value) {
+    const outer = record(entry);
+    const item = record(outer?.genre) ?? outer;
+    const rawId = validateOpaqueId(item?.slug) ?? validateOpaqueId(item?.id);
+    const title = text(item?.name) ?? text(item?.slug);
+    if (!rawId || !title) continue;
+    const id = encodePaperbackIdComponent(rawId);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    tags.push({ id, title });
+  }
+  return tags;
+};
 
 const secondaryTitles = (series: NovelDashSeriesData, primaryTitle: string): string[] => {
   const aliases = Array.isArray(series.aliases) ? series.aliases : [];
@@ -304,8 +313,10 @@ const sourceMangaFrom = (
   if (!primaryTitle) throw new Error(`${site.name} did not return a series title.`);
   const decodedId = decodeNovelDashMangaId(requestedMangaId);
   const kind = routeKind(series.type, decodedId.kind);
-  const genres = taxonomyNames(series.genres);
-  const tags = taxonomyNames(series.tags);
+  const genres = taxonomyTags(series.genres);
+  const tags = taxonomyTags(series.tags);
+  const genreTitles = genres.map((genre) => genre.title);
+  const tagTitles = tags.map((tag) => tag.title);
   const schema = bookMetadata(html);
   const description =
     resolveNovelDashFlightString(series.description, document) ?? schema.description ?? "";
@@ -338,7 +349,7 @@ const sourceMangaFrom = (
       secondaryTitles: secondaryTitles(series, primaryTitle),
       thumbnailUrl,
       synopsis: plainTextFromHtml(description),
-      contentRating: contentRating(genres, series.isMature, tags),
+      contentRating: contentRating(genreTitles, series.isMature, tagTitles),
       contentType: kind === "comic" ? "comic" : "novel",
       ...(status && { status: titleCase(status) }),
       ...(author && { author }),
@@ -352,7 +363,7 @@ const sourceMangaFrom = (
                     {
                       id: "genres",
                       title: "Genres",
-                      tags: genres.map((title) => ({ id: title, title })),
+                      tags: genres,
                     },
                   ]
                 : []),
@@ -361,7 +372,7 @@ const sourceMangaFrom = (
                     {
                       id: "tags",
                       title: "Tags",
-                      tags: tags.map((title) => ({ id: title, title })),
+                      tags,
                     },
                   ]
                 : []),

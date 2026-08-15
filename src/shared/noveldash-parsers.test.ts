@@ -8,6 +8,7 @@ import {
   parseNovelDashChapterDetails,
   parseNovelDashGenres,
   parseNovelDashSeriesPage,
+  normalizeNovelDashMediaUrl,
 } from "./noveldash-parsers.js";
 import {
   COMIC_MANGA_ID,
@@ -65,7 +66,7 @@ describe("NovelDash catalog parsing", () => {
     );
 
     assert.equal(page.items[0]?.mangaId, COMIC_MANGA_ID);
-    assert.equal(page.items[0]?.imageUrl, "https://media.fixture.example/uploads/cover.webp");
+    assert.equal(page.items[0]?.imageUrl, "https://fixture.example/uploads/cover.webp");
     assert.equal(page.items[0]?.rating, 0.85);
     assert.equal(page.items[0]?.contentRating, ContentRating.ADULT);
     assert.equal(page.items[0]?.latestChapterId, "free-2");
@@ -81,6 +82,31 @@ describe("NovelDash catalog parsing", () => {
       NOVELDASH_TEST_SITE,
     );
     assert.deepEqual(page.items, []);
+  });
+
+  it("keeps serving-origin covers and accepts only declared media hosts", () => {
+    assert.equal(
+      normalizeNovelDashMediaUrl(NOVELDASH_TEST_SITE, "/uploads/cover.webp"),
+      "https://fixture.example/uploads/cover.webp",
+    );
+    assert.equal(
+      normalizeNovelDashMediaUrl(
+        NOVELDASH_TEST_SITE,
+        "https://fixture.example/_next/image?url=%2Fuploads%2Fwrapped.webp&w=384&q=75",
+      ),
+      "https://fixture.example/uploads/wrapped.webp",
+    );
+    assert.equal(
+      normalizeNovelDashMediaUrl(
+        NOVELDASH_TEST_SITE,
+        "https://media.fixture.example/series/page.webp",
+      ),
+      "https://media.fixture.example/series/page.webp",
+    );
+    assert.equal(
+      normalizeNovelDashMediaUrl(NOVELDASH_TEST_SITE, "https://evil.example/cover.webp"),
+      undefined,
+    );
   });
 });
 
@@ -99,6 +125,25 @@ describe("NovelDash series parsing", () => {
     assert.equal(page.sourceManga.mangaInfo.contentRating, ContentRating.ADULT);
     assert.equal(page.sourceManga.mangaInfo.additionalInfo?.routeSlug, "novel-route");
     assert.equal(page.sourceManga.mangaInfo.additionalInfo?.internalSlug, "misleading-reader-slug");
+    assert.deepEqual(page.sourceManga.mangaInfo.tagGroups, [
+      {
+        id: "genres",
+        title: "Genres",
+        tags: [
+          { id: "fantasy", title: "Fantasy" },
+          { id: "adult", title: "Adult" },
+          { id: "slice-of-life", title: "Slice of Life" },
+        ],
+      },
+      {
+        id: "tags",
+        title: "Tags",
+        tags: [
+          { id: "time-travel", title: "Time Travel" },
+          { id: "school-life", title: "School Life" },
+        ],
+      },
+    ]);
     assert.equal(page.chapters[1]?.title, "🔒 Locked — 50 coins • A paid chapter");
     assert.equal(page.chapters[1]?.additionalInfo?.isAccessible, "false");
   });

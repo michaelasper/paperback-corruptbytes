@@ -3,11 +3,11 @@ import type { JSONObject } from "@paperback/types";
 export type NovelDashRouteKind = "comic" | "novel";
 
 export interface NovelDashSite {
-  key: string;
-  name: string;
-  domain: string;
-  host: string;
-  mediaHost: string;
+  readonly key: string;
+  readonly name: string;
+  readonly domain: string;
+  readonly host: string;
+  readonly mediaHost: string;
 }
 
 export interface NovelDashSearchMetadata extends JSONObject {

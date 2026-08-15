@@ -3,6 +3,7 @@ import { after, describe, it } from "node:test";
 import {
   assertNovelDashCatalogContract,
   assertNovelDashCompleteHistory,
+  assertNovelDashMetadataContract,
   assertNovelDashReaderContract,
   installNovelDashLiveApplication,
 } from "../shared/test-fixtures/noveldash-live.js";
@@ -26,6 +27,18 @@ describe("Valir Scans live public contract", { skip: !live }, () => {
       title: "The Forgotten Field",
       minimumChapters: 200,
       readableAfterChapter: 100,
+    });
+  });
+
+  it("serves real covers and safe multi-word metadata IDs", async () => {
+    await assertNovelDashMetadataContract(VALIR_SCANS_SITE, {
+      kind: "comic",
+      slug: "insos-law",
+      title: "Inso’s Law",
+      expectedTags: [
+        { id: "school-life", title: "School Life" },
+        { id: "slice-of-life", title: "Slice of Life" },
+      ],
     });
   });
 

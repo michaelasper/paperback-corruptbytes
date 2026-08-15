@@ -29,12 +29,20 @@ import {
   parseMangaDetails as parseVortexMangaDetails,
   parseMangaList as parseVortexMangaList,
 } from "../src/VortexScans/parsers.js";
+import {
+  createDeterministicRandom,
+  deriveDeterministicSeed,
+  type DeterministicRandom,
+  runBoundedTasks,
+} from "./random-runtime.js";
 
 const USER_AGENT = "Mozilla/5.0 PaperbackExtensionRandomLive/1.0";
 const REQUEST_TIMEOUT_MS = 30_000;
 const RETRYABLE_HTTP_STATUSES = new Set([429, 502, 503, 504]);
 const DEFAULT_SAMPLES_PER_SOURCE = 3;
 const MAX_SAMPLES_PER_SOURCE = 8;
+const DEFAULT_SOURCE_CONCURRENCY = 3;
+const MAX_SOURCE_CONCURRENCY = 7;
 
 interface ProbeStats {
   catalogItems: number;
@@ -79,31 +87,11 @@ const samplesPerSource = integerSetting(
   DEFAULT_SAMPLES_PER_SOURCE,
   MAX_SAMPLES_PER_SOURCE,
 );
-let randomState = seed || 0x9e37_79b9;
-
-const random = (): number => {
-  randomState ^= randomState << 13;
-  randomState ^= randomState >>> 17;
-  randomState ^= randomState << 5;
-  return (randomState >>> 0) / 0x1_0000_0000;
-};
-
-const randomInteger = (minimum: number, maximum: number): number =>
-  minimum + Math.floor(random() * (maximum - minimum + 1));
-
-const pick = <T>(values: readonly T[]): T => {
-  assert.ok(values.length > 0, "Cannot select from an empty collection.");
-  return values[Math.floor(random() * values.length)]!;
-};
-
-const sampleUnique = <T>(values: readonly T[], count: number, key: (value: T) => string): T[] => {
-  const unique = [...new Map(values.map((value) => [key(value), value])).values()];
-  for (let index = unique.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(random() * (index + 1));
-    [unique[index], unique[swapIndex]] = [unique[swapIndex]!, unique[index]!];
-  }
-  return unique.slice(0, count);
-};
+const sourceConcurrency = integerSetting(
+  "LIVE_RANDOM_CONCURRENCY",
+  DEFAULT_SOURCE_CONCURRENCY,
+  MAX_SOURCE_CONCURRENCY,
+);
 
 const isCatalogTombstone = (error: unknown): boolean => {
   let current: unknown = error;
@@ -237,6 +225,7 @@ const validateReader = (chapter: Chapter, details: ChapterDetails): void => {
 };
 
 const probeSeries = async (
+  random: DeterministicRandom,
   source: string,
   items: readonly CatalogItem[],
   load: (mangaId: string) => Promise<{ chapters: Chapter[]; manga: SourceManga }>,
@@ -244,7 +233,7 @@ const probeSeries = async (
   readable: (chapter: Chapter) => boolean = () => true,
 ): Promise<ProbeStats> => {
   assert.ok(items.length > 0, `${source} returned an empty randomized catalog sample.`);
-  const selected = sampleUnique(items, items.length, (item) => item.mangaId);
+  const selected = random.sampleUnique(items, items.length, (item) => item.mangaId);
   assert.ok(selected.length > 0, `${source} did not expose a unique title to probe.`);
   const target = Math.min(samplesPerSource, selected.length);
   const stats: ProbeStats = {
@@ -278,7 +267,7 @@ const probeSeries = async (
 
     const candidates = chapters.filter(readable);
     if (candidates.length === 0) continue;
-    const chapter = pick(candidates);
+    const chapter = random.pick(candidates);
     try {
       validateReader(chapter, await read(chapter));
     } catch (error: unknown) {
@@ -300,7 +289,7 @@ const probeSeries = async (
 
 const searchTerms = ["", "a", "dragon", "love", "mage", "return", "sword"] as const;
 
-const probeAtsumaru = async (): Promise<ProbeStats> => {
+const probeAtsumaru = async (random: DeterministicRandom): Promise<ProbeStats> => {
   const client = new AtsumaruClient();
   const sorts = [
     "relevance",
@@ -315,16 +304,17 @@ const probeAtsumaru = async (): Promise<ProbeStats> => {
     [0, 1].map((index) =>
       client.getSearchPage(
         {
-          title: index === 0 ? "" : pick(searchTerms),
+          title: index === 0 ? "" : random.pick(searchTerms),
           metadata: { adult: "safe" },
         },
-        { id: pick(sorts), label: "Random probe" },
-        index === 0 ? randomInteger(1, 8) : randomInteger(1, 3),
+        { id: random.pick(sorts), label: "Random probe" },
+        index === 0 ? random.integer(1, 8) : random.integer(1, 3),
       ),
     ),
   );
   const items = pages.flatMap((page) => page.items);
   return probeSeries(
+    random,
     "Atsumaru",
     items,
     async (mangaId) => {
@@ -335,7 +325,7 @@ const probeAtsumaru = async (): Promise<ProbeStats> => {
   );
 };
 
-const probeMadaraDex = async (): Promise<ProbeStats> => {
+const probeMadaraDex = async (random: DeterministicRandom): Promise<ProbeStats> => {
   const client = new MadaraDexClient();
   const sorts = ["latest", "alphabet", "rating", "trending", "views", "new-manga"] as const;
   const optionalPage = async (
@@ -351,15 +341,20 @@ const probeMadaraDex = async (): Promise<ProbeStats> => {
     }
   };
   const pages = await Promise.all([
-    optionalPage({ title: "" }, { id: pick(sorts), label: "Random probe" }, randomInteger(1, 5)),
     optionalPage(
-      { title: pick(searchTerms) },
-      { id: pick(sorts), label: "Random probe" },
-      randomInteger(1, 2),
+      { title: "" },
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 5),
+    ),
+    optionalPage(
+      { title: random.pick(searchTerms) },
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 2),
     ),
   ]);
   const items = pages.flatMap((page) => page.items);
   return probeSeries(
+    random,
     "MadaraDex",
     items,
     async (mangaId) => {
@@ -370,7 +365,7 @@ const probeMadaraDex = async (): Promise<ProbeStats> => {
   );
 };
 
-const probeMgeko = async (): Promise<ProbeStats> => {
+const probeMgeko = async (random: DeterministicRandom): Promise<ProbeStats> => {
   const client = new MgekoClient();
   const sorts = [
     "latest",
@@ -386,19 +381,20 @@ const probeMgeko = async (): Promise<ProbeStats> => {
   const pages = await Promise.all([
     client.getBrowsePage(
       { title: "" },
-      { id: pick(sorts), label: "Random probe" },
-      randomInteger(1, 8),
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 8),
       true,
     ),
     client.getBrowsePage(
-      { title: pick(searchTerms) },
-      { id: pick(sorts), label: "Random probe" },
-      randomInteger(1, 3),
+      { title: random.pick(searchTerms) },
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 3),
       true,
     ),
   ]);
   const items = pages.flatMap((page) => page.items);
   return probeSeries(
+    random,
     "Mgeko",
     items,
     async (mangaId) => {
@@ -409,19 +405,20 @@ const probeMgeko = async (): Promise<ProbeStats> => {
   );
 };
 
-const probeThunder = async (): Promise<ProbeStats> => {
+const probeThunder = async (random: DeterministicRandom): Promise<ProbeStats> => {
   const client = new ThunderClient();
   const sorts = ["update", "latest", "popular", "title", "titlereverse"] as const;
   const pages = await Promise.all([
     client.getDirectoryPage(
       { title: "" },
-      { id: pick(sorts), label: "Random probe" },
-      randomInteger(1, 5),
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 5),
     ),
-    client.getDirectoryPage({ title: pick(searchTerms) }, undefined, randomInteger(1, 2)),
+    client.getDirectoryPage({ title: random.pick(searchTerms) }, undefined, random.integer(1, 2)),
   ]);
   const items = pages.flatMap((page) => page.items);
   return probeSeries(
+    random,
     "Thunder",
     items,
     async (mangaId) => {
@@ -433,7 +430,7 @@ const probeThunder = async (): Promise<ProbeStats> => {
   );
 };
 
-const probeVortex = async (): Promise<ProbeStats> => {
+const probeVortex = async (random: DeterministicRandom): Promise<ProbeStats> => {
   const sorts = [
     "lastChapterAddedAt",
     "totalViews",
@@ -444,17 +441,18 @@ const probeVortex = async (): Promise<ProbeStats> => {
   const pages = await Promise.all([
     fetchVortexSearchPage(
       { title: "", metadata: { direction: ["desc"] } },
-      { id: pick(sorts), label: "Random probe" },
-      randomInteger(1, 5),
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 5),
     ),
     fetchVortexSearchPage(
-      { title: pick(searchTerms), metadata: { direction: ["desc"] } },
-      { id: pick(sorts), label: "Random probe" },
-      randomInteger(1, 2),
+      { title: random.pick(searchTerms), metadata: { direction: ["desc"] } },
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 2),
     ),
   ]);
   const items = pages.flatMap(parseVortexMangaList);
   return probeSeries(
+    random,
     "Vortex",
     items,
     async (mangaId) => {
@@ -470,7 +468,10 @@ const probeVortex = async (): Promise<ProbeStats> => {
   );
 };
 
-const probeNovelDash = async (site: NovelDashSite): Promise<ProbeStats> => {
+const probeNovelDash = async (
+  site: NovelDashSite,
+  random: DeterministicRandom,
+): Promise<ProbeStats> => {
   const client = new NovelDashClient(site);
   const sorts = ["updated", "trending", "popular", "views", "rating", "longest", "newest"];
   // These white-label sites share relatively expensive database-backed sort routes. Keep their
@@ -478,17 +479,18 @@ const probeNovelDash = async (site: NovelDashSite): Promise<ProbeStats> => {
   const pages = [
     await client.getCatalogPage(
       { title: "" },
-      { id: pick(sorts), label: "Random probe" },
-      randomInteger(1, 8),
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 8),
     ),
     await client.getCatalogPage(
-      { title: pick(searchTerms) },
-      { id: pick(sorts), label: "Random probe" },
-      randomInteger(1, 2),
+      { title: random.pick(searchTerms) },
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 2),
     ),
   ];
   const items = pages.flatMap((page) => page.items);
   return probeSeries(
+    random,
     site.name,
     items,
     async (mangaId) => {
@@ -505,31 +507,43 @@ const probeNovelDash = async (site: NovelDashSite): Promise<ProbeStats> => {
 
 const probes = [
   ["Atsumaru", probeAtsumaru],
-  ["Diva Scans", () => probeNovelDash(DIVA_SCANS_SITE)],
+  ["Diva Scans", (random: DeterministicRandom) => probeNovelDash(DIVA_SCANS_SITE, random)],
   ["MadaraDex", probeMadaraDex],
   ["Mgeko", probeMgeko],
   ["Thunder", probeThunder],
-  ["Valir Scans", () => probeNovelDash(VALIR_SCANS_SITE)],
+  ["Valir Scans", (random: DeterministicRandom) => probeNovelDash(VALIR_SCANS_SITE, random)],
   ["Vortex", probeVortex],
 ] as const;
 
 const failures: Error[] = [];
 output(`Random live seed: ${seed} (0x${seed.toString(16).padStart(8, "0")})`);
 output(`Samples per source: ${samplesPerSource}`);
+output(`Source concurrency: ${sourceConcurrency}`);
 
+const allStarted = performance.now();
 try {
-  for (const [name, probe] of probes) {
-    const started = performance.now();
-    try {
-      const stats = await probe();
+  const results = await runBoundedTasks(
+    probes.map(([name, probe]) => async () => {
+      const started = performance.now();
+      const random = createDeterministicRandom(deriveDeterministicSeed(seed, name));
+      const stats = await probe(random);
+      return { elapsedMs: Math.round(performance.now() - started), stats };
+    }),
+    sourceConcurrency,
+  );
+  for (const [index, result] of results.entries()) {
+    const [name] = probes[index]!;
+    if (result.status === "fulfilled") {
+      const { elapsedMs, stats } = result.value;
       output(
         `${name}: ${stats.series} series, ${stats.chapters} chapters, ${stats.readers} readers ` +
           `from ${stats.catalogItems} catalog items` +
           (stats.unavailable > 0 ? `, ${stats.unavailable} stale skipped` : "") +
-          ` (${Math.round(performance.now() - started)}ms)`,
+          ` (${elapsedMs}ms)`,
       );
-    } catch (error: unknown) {
-      const failure = error instanceof Error ? error : new Error(String(error));
+    } else {
+      const failure =
+        result.reason instanceof Error ? result.reason : new Error(String(result.reason));
       failures.push(new Error(`${name}: ${failure.message}`, { cause: failure }));
       output(`${name}: FAIL — ${failure.message}`);
     }
@@ -542,4 +556,4 @@ if (failures.length > 0) {
   throw new AggregateError(failures, `${failures.length} randomized source probe(s) failed.`);
 }
 
-output("All randomized live probes passed.");
+output(`All randomized live probes passed in ${Math.round(performance.now() - allStarted)}ms.`);

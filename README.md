@@ -133,9 +133,12 @@ npm test
 npm run conformance
 npm run bundle
 npm run test:live
+npm run test:live:random
 ```
 
 `npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks all five public protocols, including Atsumaru’s full anonymous rails and exported-library IDs, discovery, filters, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
+
+`npm run test:live:random` samples current catalog pages, series, chapter lists, and readable chapters through production parsers. It prints the random seed for replay; set `LIVE_RANDOM_SEED` to that unsigned 32-bit value and `LIVE_RANDOM_SAMPLES` from 1 through 8 to reproduce or widen a run.
 
 Add each extension under `src/<ExtensionName>/` with its own config, implementation, tests, and static assets. Cross-source URL, HTML, cache, request, and cookie behavior belongs in `src/shared/` with regression coverage for every existing consumer.
 

@@ -30,6 +30,7 @@
     "test:live:madaradex": "MADARADEX_LIVE_TESTS=1 tsx --test src/MadaraDex/live.test.ts",
     "test:live:mgeko": "MGEKO_LIVE_TESTS=1 tsx --test src/Mgeko/live.test.ts",
     "test:live:thunder": "THUNDER_LIVE_TESTS=1 tsx --test src/Thunderscans/live.test.ts",
+    "test:live:random": "tsx scripts/random-live.ts",
     "test:parsers": "tsx --test src/*/parsers.test.ts"
   },
   "devDependencies": {

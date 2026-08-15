@@ -66,8 +66,18 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Run live public contract tests
-        run: npm run test:live
+      - name: Run GitHub-reachable public contract tests
+        run: npm run test:live:github
+      - name: Probe MadaraDex from GitHub-hosted runner
+        id: madaradex-live
+        continue-on-error: true
+        run: npm run test:live:madaradex
+      - name: Report MadaraDex runner block
+        if: steps.madaradex-live.outcome == 'failure'
+        run: >-
+          echo "::warning title=MadaraDex live probe non-gating::The MadaraDex GitHub-hosted
+          probe failed. Its upstream currently rejects runner IPs with HTTP 403; inspect the
+          probe logs and reproduce with npm run test:live:madaradex from another network."
 
   deploy:
     name: Deploy repository

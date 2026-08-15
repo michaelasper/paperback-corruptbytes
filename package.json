@@ -27,6 +27,7 @@
     "logcat": "paperback-cli logcat",
     "test": "tsx --test src/*/*.test.ts scripts/*.test.mjs",
     "test:live": "VORTEX_LIVE_TESTS=1 VALIR_LIVE_TESTS=1 THUNDER_LIVE_TESTS=1 MGEKO_LIVE_TESTS=1 MADARADEX_LIVE_TESTS=1 DIVA_LIVE_TESTS=1 ATSUMARU_LIVE_TESTS=1 tsx --test src/*/live.test.ts",
+    "test:live:github": "VORTEX_LIVE_TESTS=1 VALIR_LIVE_TESTS=1 THUNDER_LIVE_TESTS=1 MGEKO_LIVE_TESTS=1 DIVA_LIVE_TESTS=1 ATSUMARU_LIVE_TESTS=1 tsx --test src/*/live.test.ts",
     "test:live:atsumaru": "ATSUMARU_LIVE_TESTS=1 tsx --test src/Atsumaru/live.test.ts",
     "test:live:diva": "DIVA_LIVE_TESTS=1 tsx --test src/DivaScans/live.test.ts",
     "test:live:madaradex": "MADARADEX_LIVE_TESTS=1 tsx --test src/MadaraDex/live.test.ts",

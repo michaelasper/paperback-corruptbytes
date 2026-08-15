@@ -156,6 +156,8 @@ npm run test:live:random
 
 `npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks all seven public protocols, including Atsumaru’s full anonymous rails and exported-library IDs, complete multi-page chapter histories, discovery, filters, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
 
+Scheduled CI keeps the six sites reachable from GitHub-hosted runners as gating checks. MadaraDex currently rejects those runner IPs with HTTP 403, so its scheduled probe remains visible but non-gating; run `npm run test:live:madaradex` from another network for the authoritative live result.
+
 `npm run test:live:random` samples all seven current catalogs, series, complete chapter lists, and readable chapters through production parsers. It prints the random seed for replay; set `LIVE_RANDOM_SEED` to that unsigned 32-bit value and `LIVE_RANDOM_SAMPLES` from 1 through 8 to reproduce or widen a run. Independent source jobs use stable per-source random streams and a bounded worker pool; set `LIVE_RANDOM_CONCURRENCY` from 1 through 7 to tune the pool without changing what a seed selects (the default is 3).
 
 Add each extension under `src/<ExtensionName>/` with its own config, implementation, tests, and static assets. Cross-source URL, HTML, cache, request, and cookie behavior belongs in `src/shared/` with regression coverage for every existing consumer.

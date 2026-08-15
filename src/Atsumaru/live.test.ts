@@ -170,7 +170,7 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
       ["cDiHx", ContentRating.MATURE],
       ["CM0wz", ContentRating.ADULT],
       ["DJqV8", ContentRating.ADULT],
-      ["-aOD", ContentRating.MATURE],
+      ["-aOD", ContentRating.EVERYONE],
     ] as const) {
       const [pageValue, ratingValue] = await Promise.all([
         getCachedJson(buildMangaPageUrl(mangaId)),

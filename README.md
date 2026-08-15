@@ -46,9 +46,11 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 | Extension                                                                        | Status | Best for                                                                                                                |
 | -------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
 | <img src="src/Atsumaru/static/icon.png" alt="" width="28"> **Atsumaru**          | Alpha  | Comics, novels, all anonymous discovery rails, 2,408-tag search, and exported-library chapter compatibility             |
+| <img src="src/DivaScans/static/icon.png" alt="" width="28"> **Diva Scans**       | Alpha  | Comics, novels, full paginated histories, detailed search filters, and account-aware chapter access                     |
 | <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | Alpha  | Complete Madara discovery/search, exported numeric-ID compatibility, and automatically authorized image readers         |
 | <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | Alpha  | A large safe-mode catalog, detailed range/rating/availability filters, and stable comic reader slugs                    |
 | <img src="src/Thunderscans/static/icon.png" alt="" width="28"> **Thunder Scans** | Alpha  | Comics, novels, complete discovery/search, coin-lock visibility, and chapters already available to your Thunder account |
+| <img src="src/ValirScans/static/icon.png" alt="" width="28"> **Valir Scans**     | Alpha  | Comics, novels, complete multi-page chapter lists, route-safe readers, and first-party account sessions                 |
 | <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans**   | Alpha  | Comics, novels, rich filters, paid-state metadata, and chapters already purchased through Vortex                        |
 
 ### Atsumaru
@@ -57,6 +59,13 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 - Include/exclude filters for 21 genres and 2,408 detailed tags, organized into 17 on-demand groups so the initial form stays fast.
 - Exact case-sensitive manga, chapter, and scanlation IDs—including alternate translations—preserve the exported library’s reading progress.
 - Direct CDN comic pages, escaped XHTML novel chapters, standard-by-default catalog controls with explicit rating filters, and no account requirement.
+
+### Diva Scans
+
+- Recently updated, trending, popular, most viewed, highest rated, longest, and newly added catalogs with live pagination.
+- Include/exclude genres, format, status, origin, on-sale, and chapter-range filters for title search.
+- Complete chapter histories are collected across every 100-chapter server page instead of stopping after the first response.
+- Comic images and sanitized novel HTML, explicit lock enforcement, and first-party sign-in for chapters the account already owns.
 
 ### MadaraDex
 
@@ -79,6 +88,13 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 - Stable chapter IDs, exact chapter URL reuse, lock and coin-price labels, and a preference to hide unavailable chapters.
 - First-party profile validation and purchased-chapter access without any automated purchase or unlock action.
 
+### Valir Scans
+
+- Recently updated, trending, popular, most viewed, highest rated, longest, and newly added catalogs with the full live genre taxonomy.
+- Include/exclude genres, format, status, origin, on-sale, and chapter-range filters for title search.
+- Multi-page histories are verified beyond 200 chapters, with distinct public and internal slugs preserved so valid chapters never resolve to blank pages.
+- Comic images and sanitized novel HTML, explicit lock enforcement, and first-party sign-in for chapters the account already owns.
+
 ### Vortex Scans
 
 - Latest updates, popular titles, recently added series, genres, pagination, and sorting.
@@ -90,11 +106,11 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 1. Open the [repository installation page][install-page] on the device running Paperback.
 2. Add **paperback-corruptbytes** as a repository.
-3. Install any combination of Atsumaru, MadaraDex, Mgeko, Thunder Scans, and Vortex Scans.
+3. Install any combination of Atsumaru, Diva Scans, MadaraDex, Mgeko, Thunder Scans, Valir Scans, and Vortex Scans.
 
 ## Account-backed chapters
 
-Thunder Scans and Vortex Scans can expose chapters the signed-in site reports as purchased. Open the extension’s settings, choose its sign-in action, complete authentication on the source’s first-party page, return to the account or profile page, then tap **Done** so Paperback can import only the resulting source cookies.
+Thunder Scans, Valir Scans, Diva Scans, and Vortex Scans can expose chapters the signed-in site reports as purchased. Open the extension’s settings, choose its sign-in action, complete authentication on the source’s first-party page, return to the account or profile page, then tap **Done** so Paperback can import only the resulting source cookies.
 
 Paperback’s embedded browser does not currently provide a secure external-browser or passkey handoff. If your normal sign-in depends on a passkey, use another first-party method the source offers inside the embedded view.
 
@@ -133,9 +149,12 @@ npm test
 npm run conformance
 npm run bundle
 npm run test:live
+npm run test:live:random
 ```
 
-`npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks all five public protocols, including Atsumaru’s full anonymous rails and exported-library IDs, discovery, filters, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
+`npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks all seven public protocols, including Atsumaru’s full anonymous rails and exported-library IDs, complete multi-page chapter histories, discovery, filters, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
+
+`npm run test:live:random` samples all seven current catalogs, series, complete chapter lists, and readable chapters through production parsers. It prints the random seed for replay; set `LIVE_RANDOM_SEED` to that unsigned 32-bit value and `LIVE_RANDOM_SAMPLES` from 1 through 8 to reproduce or widen a run.
 
 Add each extension under `src/<ExtensionName>/` with its own config, implementation, tests, and static assets. Cross-source URL, HTML, cache, request, and cookie behavior belongs in `src/shared/` with regression coverage for every existing consumer.
 

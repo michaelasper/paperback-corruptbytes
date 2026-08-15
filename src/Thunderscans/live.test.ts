@@ -116,8 +116,10 @@ describe("Thunder live public contract", () => {
 
   live("returns real novel chapters as sanitized HTML", async () => {
     const home = await requestText(`${DOMAIN}/`);
-    const novel = parseHomeFeed(home, "latestNovels").items[0];
-    assert.ok(novel);
+    const novel = parseHomeFeed(home, "latestNovels").items.find(
+      (item) => item.latestChapterId !== undefined,
+    );
+    assert.ok(novel, "Expected a novel advertising at least one chapter");
     const seriesHtml = await requestText(buildMangaUrl(novel.mangaId));
     const manga = parseMangaDetails(seriesHtml, novel.mangaId);
     assert.equal(manga.mangaInfo.contentType, "novel");

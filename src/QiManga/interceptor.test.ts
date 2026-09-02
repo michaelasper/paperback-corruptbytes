@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
-import type { Request, Response } from "@paperback/types";
+import type { Cookie, Request, Response } from "@paperback/types";
 
 import { CloudflareError } from "../shared/http.js";
-import { QiMangaCookieInterceptor } from "./cookies.js";
+import {
+  MAX_QIMANGA_COOKIE_BYTES,
+  MAX_QIMANGA_COOKIE_COUNT,
+  QIMANGA_COOKIE_STATE_KEY,
+  QiMangaCookieInterceptor,
+} from "./cookies.js";
 import { QiMangaInterceptor } from "./interceptor.js";
 
 const originalApplication = globalThis.Application;
@@ -181,6 +186,77 @@ describe("Qi Manga cookie state machine", () => {
     );
   });
 
+  it("bounds restored, inserted, and response cookie jars", async () => {
+    secureState.set(
+      QIMANGA_COOKIE_STATE_KEY,
+      Array.from({ length: 100 }, (_, index) => ({
+        name: `session_${index}`,
+        value: `value-${index}`,
+        domain: ".qimanga.com",
+        path: "/",
+      })),
+    );
+    const restored = new QiMangaCookieInterceptor();
+    assert.equal(restored.cookies.length, MAX_QIMANGA_COOKIE_COUNT);
+    assert.equal(
+      (secureState.get(QIMANGA_COOKIE_STATE_KEY) as Cookie[]).length,
+      MAX_QIMANGA_COOKIE_COUNT,
+    );
+
+    secureState.clear();
+    const inserted = new QiMangaCookieInterceptor();
+    for (let index = 0; index < 20; index += 1) {
+      inserted.setCookie({
+        name: `large_${index}`,
+        value: "x".repeat(16 * 1_024),
+        domain: ".qimanga.com",
+        path: "/",
+      });
+    }
+    assert.ok(inserted.cookies.length < 20);
+    assert.ok(
+      new TextEncoder().encode(JSON.stringify(inserted.cookies)).byteLength <=
+        MAX_QIMANGA_COOKIE_BYTES,
+    );
+
+    secureState.clear();
+    const fromResponse = new QiMangaCookieInterceptor();
+    fromResponse.setCookie({
+      name: "canonical",
+      value: "value",
+      domain: ".qimanga.com",
+      path: "/",
+      unexpected: "x".repeat(MAX_QIMANGA_COOKIE_BYTES),
+    } as Cookie & { unexpected: string });
+    assert.equal(
+      Object.hasOwn(
+        (secureState.get(QIMANGA_COOKIE_STATE_KEY) as Record<string, unknown>[])[0] ?? {},
+        "unexpected",
+      ),
+      false,
+    );
+    const request = await fromResponse.interceptRequest({
+      url: "https://api.qimanga.com/api/v1/users/me",
+      method: "GET",
+    });
+    await fromResponse.interceptResponse(
+      request,
+      {
+        url: request.url,
+        status: 200,
+        headers: {},
+        cookies: Array.from({ length: 500 }, (_, index) => ({
+          name: `response_${index}`,
+          value: `value-${index}`,
+          domain: ".qimanga.com",
+          path: "/",
+        })),
+      },
+      new ArrayBuffer(0),
+    );
+    assert.equal(fromResponse.cookies.length, MAX_QIMANGA_COOKIE_COUNT);
+  });
+
   it("cannot resurrect a logged-out session from a stale in-flight response", async () => {
     const cookies = new QiMangaCookieInterceptor();
     const oldRequest = await cookies.interceptRequest({
@@ -188,6 +264,13 @@ describe("Qi Manga cookie state machine", () => {
       method: "GET",
     });
     cookies.invalidateAuthCookies();
+    assert.equal(cookies.authCookieGeneration, 1);
+    cookies.setCookie({ name: "accessToken", value: "blocked", domain: ".qimanga.com", path: "/" });
+    cookies.setCookie({ name: "cf_clearance", value: "clear", domain: ".qimanga.com", path: "/" });
+    assert.equal(
+      cookies.cookies.some((cookie) => cookie.value === "blocked"),
+      false,
+    );
 
     await cookies.interceptResponse(
       oldRequest,
@@ -205,6 +288,7 @@ describe("Qi Manga cookie state machine", () => {
     );
 
     cookies.acceptAuthCookies();
+    assert.equal(cookies.authCookieGeneration, 2);
     const newRequest = await cookies.interceptRequest({
       url: "https://api.qimanga.com/api/v1/users/me",
       method: "GET",

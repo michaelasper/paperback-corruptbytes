@@ -16,7 +16,10 @@ export const SIGN_OUT_URL = `${API_BASE_URL}/auth/logout`;
 
 export interface QiMangaCookieStore {
   readonly cookies: Readonly<Cookie[]>;
+  /** Monotonically changes whenever the installed authentication session changes. */
+  readonly authCookieGeneration?: number;
   setCookie(cookie: Cookie): void;
+  setCookies?(cookies: readonly Cookie[]): void;
   deleteCookie(cookie: Cookie): void;
   invalidateAuthCookies?(): void;
   acceptAuthCookies?(): void;
@@ -45,10 +48,13 @@ const SIGN_OUT_RESPONSE_OPTIONS = {
   isResponseUrlAllowed: ACCOUNT_RESPONSE_OPTIONS.isResponseUrlAllowed,
 } as const;
 const SIGN_OUT_TIMEOUT_MS = 5_000;
-const refreshRequests = new WeakMap<QiMangaCookieStore, Promise<void>>();
+export const MAX_QIMANGA_COOKIE_CANDIDATES = 128;
+const refreshRequests = new WeakMap<QiMangaCookieStore, Map<number | undefined, Promise<void>>>();
 
-const cookieDomain = (cookie: Cookie): string =>
-  typeof cookie.domain === "string" ? cookie.domain.trim().replace(/^\.+/, "").toLowerCase() : "";
+const cookieDomain = (cookie: Cookie): string => {
+  if (typeof cookie.domain !== "string" || cookie.domain !== cookie.domain.trim()) return "";
+  return cookie.domain.replace(/^\.+/, "").toLowerCase();
+};
 
 const isValidCookieDate = (value: Date | undefined): boolean =>
   value === undefined || (value instanceof Date && Number.isFinite(value.getTime()));
@@ -85,14 +91,21 @@ export const persistQiMangaCookies = (
   store: QiMangaCookieStore,
   cookies: readonly Cookie[],
 ): void => {
+  const candidates: Cookie[] = [];
+  const maximum = Math.min(cookies.length, MAX_QIMANGA_COOKIE_CANDIDATES);
+  for (let index = 0; index < maximum; index += 1) {
+    const cookie = cookies[index];
+    if (cookie && isQiMangaCookie(cookie)) candidates.push(cookie);
+  }
+  if (store.setCookies) {
+    store.setCookies(candidates);
+    return;
+  }
+
   const now = Date.now();
-  for (const cookie of cookies) {
-    if (!isQiMangaCookie(cookie)) continue;
-    if (cookie.expires && cookie.expires.getTime() <= now) {
-      store.deleteCookie(cookie);
-      continue;
-    }
-    store.setCookie(cookie);
+  for (const cookie of candidates) {
+    if (cookie.expires && cookie.expires.getTime() <= now) store.deleteCookie(cookie);
+    else store.setCookie(cookie);
   }
 };
 
@@ -126,10 +139,26 @@ const cloneRequest = (request: Request): Request => ({
 const isRejectedSession = (error: unknown): error is SourceHttpError =>
   error instanceof SourceHttpError && (error.status === 401 || error.status === 403);
 
-/** Coalesce refreshes so parallel catalog/reader failures rotate the session only once. */
+const authCookieGeneration = (store: QiMangaCookieStore): number | undefined =>
+  store.authCookieGeneration;
+
+const generationMatches = (store: QiMangaCookieStore, expected: number | undefined): boolean =>
+  expected === undefined || store.authCookieGeneration === expected;
+
+const invalidateIfCurrent = (store: QiMangaCookieStore, expected: number | undefined): void => {
+  if (generationMatches(store, expected)) invalidateQiMangaAuth(store);
+};
+
+/** Coalesce refreshes for the same installed session, without joining stale-session work. */
 export const refreshQiMangaSession = (store: QiMangaCookieStore): Promise<void> => {
-  const active = refreshRequests.get(store);
+  const generation = authCookieGeneration(store);
+  let activeByGeneration = refreshRequests.get(store);
+  const active = activeByGeneration?.get(generation);
   if (active) return active;
+  if (!activeByGeneration) {
+    activeByGeneration = new Map();
+    refreshRequests.set(store, activeByGeneration);
+  }
 
   const refresh = (async () => {
     const { response, data } = await scheduleRawResponse(
@@ -142,15 +171,20 @@ export const refreshQiMangaSession = (store: QiMangaCookieStore): Promise<void> 
     );
     if (response.status < 200 || response.status >= 300) {
       const error = new SourceHttpError(REFRESH_RESPONSE_OPTIONS.sourceName, response.status);
-      if (isRejectedSession(error)) invalidateQiMangaAuth(store);
+      if (isRejectedSession(error)) invalidateIfCurrent(store, generation);
       throw error;
     }
     assertResponseBodyWithinLimit(data, REFRESH_RESPONSE_OPTIONS);
+    // Cookie response interception has already installed the rotated session. Advancing
+    // the generation lets delayed 401 responses reuse it instead of refreshing again.
+    if (generationMatches(store, generation)) store.acceptAuthCookies?.();
   })();
 
-  refreshRequests.set(store, refresh);
+  activeByGeneration.set(generation, refresh);
   const clearRefresh = (): void => {
-    if (refreshRequests.get(store) === refresh) refreshRequests.delete(store);
+    const requests = refreshRequests.get(store);
+    if (requests?.get(generation) === refresh) requests.delete(generation);
+    if (requests?.size === 0) refreshRequests.delete(store);
   };
   void refresh.then(clearRefresh, clearRefresh);
   return refresh;
@@ -162,23 +196,33 @@ export const fetchQiMangaTextWithSessionRefresh = async (
   request: Request,
 ): Promise<string> => {
   const method = request.method.trim().toUpperCase();
+  const initialGeneration = authCookieGeneration(store);
   const canRefresh =
     (method === "GET" || method === "HEAD") &&
     request.url !== REFRESH_URL &&
     isApiRequestUrl(request.url) &&
     hasQiMangaAuthCookies(store);
 
+  let rejectedRequest: SourceHttpError;
   try {
     return await fetchText(cloneRequest(request));
   } catch (error: unknown) {
     if (!(canRefresh && error instanceof SourceHttpError && error.status === 401)) throw error;
+    rejectedRequest = error;
   }
 
-  await refreshQiMangaSession(store);
+  if (generationMatches(store, initialGeneration)) {
+    await refreshQiMangaSession(store);
+  }
+  if (!hasQiMangaAuthCookies(store)) throw rejectedRequest;
+
+  const retryGeneration = authCookieGeneration(store);
   try {
     return await fetchText(cloneRequest(request));
   } catch (error: unknown) {
-    if (error instanceof SourceHttpError && error.status === 401) invalidateQiMangaAuth(store);
+    if (error instanceof SourceHttpError && error.status === 401) {
+      invalidateIfCurrent(store, retryGeneration);
+    }
     throw error;
   }
 };
@@ -222,17 +266,21 @@ export const fetchQiMangaAccountStatus = async (
   };
   let response;
   let data: ArrayBuffer;
+  let responseGeneration = store && authCookieGeneration(store);
   try {
     ({ response, data } = await scheduleRawResponse(
       cloneRequest(request),
       ACCOUNT_RESPONSE_OPTIONS,
     ));
     if (response.status === 401 && store && hasQiMangaAuthCookies(store)) {
-      await refreshQiMangaSession(store);
-      ({ response, data } = await scheduleRawResponse(
-        cloneRequest(request),
-        ACCOUNT_RESPONSE_OPTIONS,
-      ));
+      if (generationMatches(store, responseGeneration)) await refreshQiMangaSession(store);
+      if (hasQiMangaAuthCookies(store)) {
+        responseGeneration = authCookieGeneration(store);
+        ({ response, data } = await scheduleRawResponse(
+          cloneRequest(request),
+          ACCOUNT_RESPONSE_OPTIONS,
+        ));
+      }
     }
   } catch {
     return { authenticated: false };
@@ -240,7 +288,7 @@ export const fetchQiMangaAccountStatus = async (
 
   if (response.status < 200 || response.status >= 300) {
     if (store && (response.status === 401 || response.status === 403)) {
-      invalidateQiMangaAuth(store);
+      invalidateIfCurrent(store, responseGeneration);
     }
     return { authenticated: false };
   }

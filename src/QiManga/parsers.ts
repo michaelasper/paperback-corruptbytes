@@ -94,7 +94,7 @@ const statusLabel = (value: unknown): string | undefined => {
 
 const seriesItem = (value: unknown): QiSeriesItem | undefined => {
   const record = asRecord(value);
-  const slug = clean(record.slug, 256);
+  const slug = typeof record.slug === "string" ? record.slug : "";
   const title = clean(record.title, 1_024);
   const type = clean(record.type, 64).toUpperCase();
   if (
@@ -232,7 +232,7 @@ const person = (value: unknown): string | undefined => {
 
 export const parseMangaDetails = (value: unknown, mangaId: string): SourceManga => {
   const record = asRecord(value);
-  const slug = clean(record.slug, 256);
+  const slug = typeof record.slug === "string" ? record.slug : "";
   const primaryTitle = clean(record.title, 1_024);
   if (!slug || !isValidSeriesSlug(slug) || !primaryTitle) {
     throw new Error("Qi Manga returned an invalid series detail response.");
@@ -247,7 +247,7 @@ export const parseMangaDetails = (value: unknown, mangaId: string): SourceManga 
   const genres = boundedArray(record.genres ?? [], MAX_GENRES, "series genre list")
     .flatMap((candidate): Tag[] => {
       const genre = asRecord(candidate);
-      const id = clean(genre.slug, 256);
+      const id = typeof genre.slug === "string" ? genre.slug : "";
       const title = clean(genre.name, 256);
       return id && title && isValidSeriesSlug(id) ? [{ id, title }] : [];
     })
@@ -338,7 +338,7 @@ export const parseChapterPage = (
   }
   const chapters = data.flatMap((candidate): Chapter[] => {
     const chapter = asRecord(candidate);
-    const slug = validateOpaqueId(clean(chapter.slug, 256));
+    const slug = validateOpaqueId(chapter.slug, 256);
     const chapterId = slug && encodePaperbackIdComponent(slug);
     const chapNum = finiteNumber(chapter.number);
     if (!slug || !chapterId || chapterId.length > 256 || chapNum === undefined || chapNum < 0) {
@@ -397,13 +397,14 @@ const LOCKED_ERROR =
 
 export const parseChapterDetails = (value: unknown, chapter: Chapter): ChapterDetails => {
   const record = asRecord(value);
-  const returnedSlug = validateOpaqueId(clean(record.slug, 256));
+  const returnedSlug = validateOpaqueId(record.slug, 256);
   const expectedSlug = validateOpaqueId(decodePaperbackIdComponent(chapter.chapterId));
   if (!returnedSlug || !expectedSlug || returnedSlug !== expectedSlug) {
     throw new Error("Qi Manga returned content for a different chapter.");
   }
 
-  const returnedSeriesSlug = clean(asRecord(record.series).slug, 256);
+  const seriesSlug = asRecord(record.series).slug;
+  const returnedSeriesSlug = typeof seriesSlug === "string" ? seriesSlug : "";
   if (
     !isValidSeriesSlug(returnedSeriesSlug) ||
     returnedSeriesSlug !== seriesIdToSlug(chapter.sourceManga.mangaId)
@@ -480,7 +481,7 @@ export const parseGenres = (value: unknown): Tag[] => {
   return boundedArray(value, MAX_GENRES, "genre list")
     .flatMap((candidate): Tag[] => {
       const record = asRecord(candidate);
-      const id = clean(record.slug, 256);
+      const id = typeof record.slug === "string" ? record.slug : "";
       const title = clean(record.name, 256);
       if (!id || !title || !isValidSeriesSlug(id) || seen.has(id)) return [];
       seen.add(id);

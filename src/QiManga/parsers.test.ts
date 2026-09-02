@@ -63,6 +63,28 @@ describe("Qi Manga series parsers", () => {
     );
   });
 
+  it("never normalizes opaque series or genre identifiers", () => {
+    assert.deepEqual(
+      parseSeriesCards([{ ...HOME_RESPONSE.banners[0], slug: " the-supreme-demon-swordmaster " }]),
+      [],
+    );
+    assert.throws(
+      () =>
+        parseMangaDetails(
+          { ...SERIES_DETAIL, slug: " the-supreme-demon-swordmaster " },
+          seriesSlugToId("the-supreme-demon-swordmaster"),
+        ),
+      /invalid series detail/i,
+    );
+    assert.deepEqual(
+      parseGenres([
+        { slug: " action ", name: "Action" },
+        { slug: "action", name: "Action" },
+      ]),
+      [{ id: "action", title: "Action" }],
+    );
+  });
+
   it("accepts observed CDNs and replaces all other API-provided cover hosts", () => {
     const [legacyCard] = parseSeriesCards([
       {
@@ -223,6 +245,39 @@ describe("Qi Manga chapter parsers", () => {
       true,
     );
     assert.deepEqual(page.chapters, []);
+  });
+
+  it("never normalizes opaque chapter or owning-series identifiers", () => {
+    const page = parseChapterPage(
+      {
+        ...CHAPTER_PAGE_ONE,
+        data: [{ ...CHAPTER_PAGE_ONE.data[0], slug: " chapter-1 " }],
+        totalItems: 1,
+        totalPages: 1,
+      },
+      comicManga,
+      true,
+    );
+    assert.deepEqual(page.chapters, []);
+    assert.throws(
+      () =>
+        parseChapterDetails(
+          { ...COMIC_CHAPTER_RESPONSE, slug: " chapter-3 " },
+          chapterFor(comicManga, "chapter-3", 3),
+        ),
+      /different chapter/i,
+    );
+    assert.throws(
+      () =>
+        parseChapterDetails(
+          {
+            ...COMIC_CHAPTER_RESPONSE,
+            series: { slug: " the-supreme-demon-swordmaster " },
+          },
+          chapterFor(comicManga, "chapter-3", 3),
+        ),
+      /different series/i,
+    );
   });
 
   it("sorts, deduplicates, and assigns deterministic indices", () => {

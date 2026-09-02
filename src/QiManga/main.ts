@@ -155,10 +155,10 @@ export class QiMangaExtension implements ExtensionImpl<typeof QiMangaConfig> {
   }
 
   async getSettingsForm(): Promise<Form> {
-    return new QiMangaSettingsForm(
-      this.cookies,
-      await fetchQiMangaAccountStatus(this.cookies),
-      () => this.client.invalidateAccountCaches(),
+    const account = await fetchQiMangaAccountStatus(this.cookies);
+    this.client.invalidateAccountCaches();
+    return new QiMangaSettingsForm(this.cookies, account, () =>
+      this.client.invalidateAccountCaches(),
     );
   }
 

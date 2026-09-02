@@ -113,6 +113,52 @@ describe("Qi Manga settings", () => {
     );
   });
 
+  it("fails closed when imported login cookies cannot be verified", async () => {
+    Object.assign(Application, {
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+        requests.push(request);
+        return [
+          { url: request.url, status: 503, headers: {}, cookies: [] },
+          new TextEncoder().encode('{"error":"unavailable"}').buffer,
+        ];
+      },
+    });
+    const store = new MemoryCookieStore();
+    store.cookies = [{ name: "cf_clearance", value: "clear", domain: ".qimanga.com" }];
+    let invalidations = 0;
+    const form = new QiMangaSettingsForm(store, { authenticated: false }, () => {
+      invalidations += 1;
+    });
+
+    await form.handleLoginComplete([
+      { name: "accessToken", value: "new", domain: ".qimanga.com", path: "/" },
+    ]);
+
+    assert.deepEqual(form.account, { authenticated: false });
+    assert.deepEqual(
+      store.cookies.map((cookie) => cookie.name),
+      ["cf_clearance"],
+    );
+    assert.equal(store.invalidations, 2);
+    assert.equal(invalidations, 1);
+  });
+
+  it("invalidates account state after a cancelled login and exposes stale-session clearing", async () => {
+    const store = new MemoryCookieStore();
+    store.cookies = [{ name: "accessToken", value: "existing", domain: ".qimanga.com", path: "/" }];
+    let invalidations = 0;
+    const form = new QiMangaSettingsForm(store, { authenticated: false }, () => {
+      invalidations += 1;
+    });
+    const logout = form.getSections()[0]?.items[2] as { isHidden?: boolean } | undefined;
+    assert.equal(logout?.isHidden, false);
+
+    await form.handleLoginCancel();
+
+    assert.deepEqual(form.account, { authenticated: true, displayName: "Reader" });
+    assert.equal(invalidations, 1);
+  });
+
   it("clears local and remote sessions on logout", async () => {
     const store = new MemoryCookieStore();
     store.cookies = [

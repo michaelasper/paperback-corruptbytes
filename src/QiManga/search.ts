@@ -13,6 +13,7 @@ export const STATUS_OPTIONS: Tag[] = [
   { id: "COMPLETED", title: "Completed" },
   { id: "HIATUS", title: "Hiatus" },
   { id: "DROPPED", title: "Dropped" },
+  { id: "CANCELLED", title: "Cancelled" },
 ];
 
 export const TYPE_OPTIONS: Tag[] = [

@@ -83,7 +83,7 @@ describe("Qi Manga advanced search", () => {
   it("matches every live status and format enum", () => {
     assert.deepEqual(
       STATUS_OPTIONS.map((item) => item.id),
-      ["ONGOING", "COMPLETED", "HIATUS", "DROPPED"],
+      ["ONGOING", "COMPLETED", "HIATUS", "DROPPED", "CANCELLED"],
     );
     assert.deepEqual(
       TYPE_OPTIONS.map((item) => item.id),

@@ -10,6 +10,8 @@ import {
 
 import {
   fetchQiMangaAccountStatus,
+  hasQiMangaAuthCookies,
+  invalidateQiMangaAuth,
   replaceQiMangaCookies,
   signOutQiManga,
   type QiMangaAccountStatus,
@@ -41,13 +43,15 @@ export class QiMangaSettingsForm extends Form {
 
   async handleLoginComplete(cookies: Cookie[]): Promise<void> {
     replaceQiMangaCookies(this.cookieStore, cookies);
-    this.onAuthenticationChanged();
     this.account = await fetchQiMangaAccountStatus(this.cookieStore);
+    if (!this.account.authenticated) invalidateQiMangaAuth(this.cookieStore);
+    this.onAuthenticationChanged();
     this.reloadForm();
   }
 
   async handleLoginCancel(): Promise<void> {
     this.account = await fetchQiMangaAccountStatus(this.cookieStore);
+    this.onAuthenticationChanged();
     this.reloadForm();
   }
 
@@ -65,6 +69,7 @@ export class QiMangaSettingsForm extends Form {
         ? `Logged in as ${identity}`
         : "Logged in"
       : "Not logged in";
+    const canClearSession = this.account.authenticated || hasQiMangaAuthCookies(this.cookieStore);
 
     return [
       Section(
@@ -84,7 +89,7 @@ export class QiMangaSettingsForm extends Form {
           }),
           ButtonRow("logout", {
             title: "Sign out and clear session",
-            isHidden: !this.account.authenticated,
+            isHidden: !canClearSession,
             onSelect: Application.Selector(this as QiMangaSettingsForm, "handleLogout"),
           }),
         ],

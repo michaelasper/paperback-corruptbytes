@@ -278,6 +278,14 @@ describe("Qi Manga extension", () => {
     assert.deepEqual(client.chapterOptions, [{ showLocked: false, sinceDate }]);
   });
 
+  it("revalidates account-sensitive chapter state when settings open", async () => {
+    const client = new FakeClient();
+
+    await new QiMangaExtension(client).getSettingsForm();
+
+    assert.equal(client.accountCacheInvalidations, 1);
+  });
+
   it("persists only accepted bypass cookies and invalidates account-sensitive caches", async () => {
     const client = new FakeClient();
     const extension = new QiMangaExtension(client);

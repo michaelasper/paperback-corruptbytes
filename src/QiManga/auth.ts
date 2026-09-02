@@ -88,6 +88,9 @@ export const persistQiMangaCookies = (
   }
 };
 
+export const hasQiMangaAuthCookies = (store: QiMangaCookieStore): boolean =>
+  store.cookies.some((cookie) => isQiMangaCookie(cookie) && isQiMangaAuthCookieName(cookie.name));
+
 export const invalidateQiMangaAuth = (store: QiMangaCookieStore): void => {
   store.invalidateAuthCookies?.();
   for (const cookie of store.cookies) {

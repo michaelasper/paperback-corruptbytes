@@ -45,7 +45,7 @@ const requestJson = async (url: string): Promise<unknown> => {
 
 describe("Qi Manga live public contract", () => {
   live("keeps every enabled home rail, taxonomy, and filtered novel browse live", async () => {
-    const [homeResponse, genreResponse, novelResponse] = await Promise.all([
+    const [homeResponse, genreResponse, novelResponse, cancelledResponse] = await Promise.all([
       requestJson(buildHomeUrl()),
       requestJson(buildGenresUrl()),
       requestJson(
@@ -55,10 +55,12 @@ describe("Qi Manga live public contract", () => {
           1,
         ),
       ),
+      requestJson(buildBrowseUrl({ title: "", metadata: { status: "CANCELLED" } }, undefined, 1)),
     ]);
     const home = parseHome(homeResponse);
     const genres = parseGenres(genreResponse);
     const novels = parseSeriesPage(novelResponse);
+    const cancelled = parseSeriesPage(cancelledResponse);
 
     assert.ok(home.banners.length > 0);
     assert.ok(home.popular.length > 0);
@@ -70,6 +72,8 @@ describe("Qi Manga live public contract", () => {
     assert.ok(novels.items.length > 0);
     assert.ok(novels.items.every((item) => item.type === "NOVEL"));
     assert.ok(novels.items.some((item) => item.mangaId.includes("%27")));
+    assert.ok(cancelled.items.length > 0);
+    assert.ok(cancelled.items.every((item) => item.status === "CANCELLED"));
   });
 
   live("preserves a comic ID, full chapter list, and ordered live image reader", async () => {

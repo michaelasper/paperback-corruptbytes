@@ -14,6 +14,7 @@ class MemoryCookieStore implements QiMangaCookieStore {
   cookies: Cookie[] = [];
   invalidations = 0;
   acceptances = 0;
+  sensitiveCookieGeneration = 0;
 
   setCookie(cookie: Cookie): void {
     this.cookies.push(cookie);
@@ -27,10 +28,12 @@ class MemoryCookieStore implements QiMangaCookieStore {
 
   invalidateAuthCookies(): void {
     this.invalidations += 1;
+    this.sensitiveCookieGeneration += 1;
   }
 
   acceptAuthCookies(): void {
     this.acceptances += 1;
+    this.sensitiveCookieGeneration += 1;
   }
 }
 
@@ -113,7 +116,173 @@ describe("Qi Manga settings", () => {
     );
   });
 
-  it("preserves imported login cookies during a transient verification failure", async () => {
+  it("ignores an older login verification after a newer login completes", async () => {
+    let accountCalls = 0;
+    let releaseOld!: () => void;
+    let markOldStarted!: () => void;
+    const oldGate = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    const oldStarted = new Promise<void>((resolve) => {
+      markOldStarted = resolve;
+    });
+    Object.assign(Application, {
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+        requests.push(request);
+        accountCalls += 1;
+        if (accountCalls === 1) {
+          markOldStarted();
+          await oldGate;
+          return [{ url: request.url, status: 503, headers: {}, cookies: [] }, new ArrayBuffer(0)];
+        }
+        if (accountCalls === 2) {
+          return [
+            { url: request.url, status: 200, headers: {}, cookies: [] },
+            new TextEncoder().encode('{"id":2,"displayName":"Account B"}').buffer,
+          ];
+        }
+        throw new Error("A stale settings operation must not revalidate the newer session.");
+      },
+    });
+    const store = new MemoryCookieStore();
+    let invalidations = 0;
+    const form = new QiMangaSettingsForm(store, { authenticated: false }, () => {
+      invalidations += 1;
+    });
+
+    const older = form.handleLoginComplete([
+      { name: "accessToken", value: "account-a", domain: ".qimanga.com", path: "/" },
+    ]);
+    await oldStarted;
+    const newer = form.handleLoginComplete([
+      { name: "accessToken", value: "account-b", domain: ".qimanga.com", path: "/" },
+    ]);
+    await newer;
+    releaseOld();
+    await older;
+
+    assert.deepEqual(form.account, { authenticated: true, displayName: "Account B" });
+    assert.deepEqual(
+      store.cookies.map(({ value }) => value),
+      ["account-b"],
+    );
+    assert.equal(store.invalidations, 2);
+    assert.equal(store.acceptances, 2);
+    assert.equal(invalidations, 1);
+  });
+
+  it("serializes asynchronous authentication across separate settings forms", async () => {
+    let accountCalls = 0;
+    let releaseOld!: () => void;
+    let markOldStarted!: () => void;
+    const oldGate = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    const oldStarted = new Promise<void>((resolve) => {
+      markOldStarted = resolve;
+    });
+    Object.assign(Application, {
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+        accountCalls += 1;
+        if (accountCalls === 1) {
+          markOldStarted();
+          await oldGate;
+          return [{ url: request.url, status: 503, headers: {}, cookies: [] }, new ArrayBuffer(0)];
+        }
+        return [
+          { url: request.url, status: 200, headers: {}, cookies: [] },
+          new TextEncoder().encode('{"id":2,"displayName":"Account B"}').buffer,
+        ];
+      },
+    });
+    const store = new MemoryCookieStore();
+    let oldChanges = 0;
+    let newChanges = 0;
+    const oldForm = new QiMangaSettingsForm(store, { authenticated: false }, () => {
+      oldChanges += 1;
+    });
+    const newForm = new QiMangaSettingsForm(store, { authenticated: false }, () => {
+      newChanges += 1;
+    });
+
+    const older = oldForm.handleLoginComplete([
+      { name: "accessToken", value: "account-a", domain: ".qimanga.com", path: "/" },
+    ]);
+    await oldStarted;
+    await newForm.handleLoginComplete([
+      { name: "accessToken", value: "account-b", domain: ".qimanga.com", path: "/" },
+    ]);
+    releaseOld();
+    await older;
+
+    assert.deepEqual(oldForm.account, { authenticated: false });
+    assert.deepEqual(newForm.account, { authenticated: true, displayName: "Account B" });
+    assert.deepEqual(
+      store.cookies.map(({ value }) => value),
+      ["account-b"],
+    );
+    assert.equal(oldChanges, 0);
+    assert.equal(newChanges, 1);
+  });
+
+  it("does not let a stale cancellation overwrite a newer verified login", async () => {
+    let accountCalls = 0;
+    let releaseCancellation!: () => void;
+    let markCancellationStarted!: () => void;
+    const cancellationGate = new Promise<void>((resolve) => {
+      releaseCancellation = resolve;
+    });
+    const cancellationStarted = new Promise<void>((resolve) => {
+      markCancellationStarted = resolve;
+    });
+    Object.assign(Application, {
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+        requests.push(request);
+        accountCalls += 1;
+        if (accountCalls === 1) {
+          markCancellationStarted();
+          await cancellationGate;
+          return [{ url: request.url, status: 403, headers: {}, cookies: [] }, new ArrayBuffer(0)];
+        }
+        return [
+          { url: request.url, status: 200, headers: {}, cookies: [] },
+          new TextEncoder().encode('{"id":2,"displayName":"Account B"}').buffer,
+        ];
+      },
+    });
+    const store = new MemoryCookieStore();
+    store.cookies = [
+      { name: "accessToken", value: "account-a", domain: ".qimanga.com", path: "/" },
+    ];
+    let invalidations = 0;
+    const form = new QiMangaSettingsForm(
+      store,
+      { authenticated: true, displayName: "Account A" },
+      () => {
+        invalidations += 1;
+      },
+    );
+
+    const cancellation = form.handleLoginCancel();
+    await cancellationStarted;
+    const login = form.handleLoginComplete([
+      { name: "accessToken", value: "account-b", domain: ".qimanga.com", path: "/" },
+    ]);
+    await login;
+    releaseCancellation();
+    await cancellation;
+
+    assert.deepEqual(form.account, { authenticated: true, displayName: "Account B" });
+    assert.deepEqual(
+      store.cookies.map(({ value }) => value),
+      ["account-b"],
+    );
+    assert.equal(store.invalidations, 1);
+    assert.equal(store.acceptances, 1);
+    assert.equal(invalidations, 1);
+  });
+
+  it("fails closed for imported login cookies during a transient verification failure", async () => {
     Object.assign(Application, {
       scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
         requests.push(request);
@@ -137,9 +306,9 @@ describe("Qi Manga settings", () => {
     assert.deepEqual(form.account, { authenticated: false });
     assert.deepEqual(
       store.cookies.map((cookie) => cookie.name),
-      ["cf_clearance", "accessToken"],
+      ["cf_clearance"],
     );
-    assert.equal(store.invalidations, 1);
+    assert.equal(store.invalidations, 2);
     assert.equal(invalidations, 1);
   });
 
@@ -169,7 +338,7 @@ describe("Qi Manga settings", () => {
       store.cookies.map((cookie) => cookie.name),
       ["cf_clearance"],
     );
-    assert.equal(store.invalidations, 2);
+    assert.equal(store.invalidations, 3);
     assert.equal(invalidations, 1);
     assert.deepEqual(
       requests.map((request) => request.url),
@@ -190,6 +359,37 @@ describe("Qi Manga settings", () => {
     await form.handleLoginCancel();
 
     assert.deepEqual(form.account, { authenticated: true, displayName: "Reader" });
+    assert.equal(invalidations, 1);
+  });
+
+  it("fails closed when a cancelled login cannot be verified", async () => {
+    Object.assign(Application, {
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+        requests.push(request);
+        return [
+          { url: request.url, status: 503, headers: {}, cookies: [] },
+          new TextEncoder().encode('{"error":"unavailable"}').buffer,
+        ];
+      },
+    });
+    const store = new MemoryCookieStore();
+    store.cookies = [
+      { name: "accessToken", value: "unverified", domain: ".qimanga.com", path: "/" },
+      { name: "cf_clearance", value: "clear", domain: ".qimanga.com", path: "/" },
+    ];
+    let invalidations = 0;
+    const form = new QiMangaSettingsForm(store, { authenticated: false }, () => {
+      invalidations += 1;
+    });
+
+    await form.handleLoginCancel();
+
+    assert.deepEqual(form.account, { authenticated: false });
+    assert.deepEqual(
+      store.cookies.map((cookie) => cookie.name),
+      ["cf_clearance"],
+    );
+    assert.equal(store.invalidations, 1);
     assert.equal(invalidations, 1);
   });
 

@@ -76,7 +76,7 @@ class FakeClient implements QiMangaClientContract {
 
   async getLatest(page: number): Promise<QiMangaSeriesPage> {
     this.latestPages.push(page);
-    return { items: [card({ mangaId: `latest-${page}` })], page, pageCount: 2 };
+    return { items: [card({ mangaId: `latest-${page}` })], page, pageCount: 2, totalCount: 2 };
   }
 
   async getSearchPage(
@@ -85,7 +85,7 @@ class FakeClient implements QiMangaClientContract {
     page: number,
   ): Promise<QiMangaSeriesPage> {
     this.searchCalls.push({ query, ...(sortingOption && { sortingOption }), page });
-    return { items: [card()], page, pageCount: 2 };
+    return { items: [card()], page, pageCount: 2, totalCount: 2 };
   }
 
   async getGenres(): Promise<Tag[]> {
@@ -225,12 +225,13 @@ describe("Qi Manga extension", () => {
     ]);
   });
 
-  it("returns mutation-isolated sorting options", async () => {
+  it("returns mutation-isolated browse sorting and hides it for title search", async () => {
     const extension = new QiMangaExtension(new FakeClient());
     const first = await extension.getSortingOptions({ title: "" });
     first[0]!.label = "Changed";
     first.pop();
     assert.deepEqual(await extension.getSortingOptions({ title: "" }), SORTING_OPTIONS);
+    assert.deepEqual(await extension.getSortingOptions({ title: "demon" }), []);
   });
 
   it("delegates complete searches, sorting, and page state", async () => {
@@ -325,11 +326,78 @@ describe("Qi Manga extension", () => {
     assert.equal(client.accountCacheInvalidations, 1);
   });
 
+  it("bounds malformed Cloudflare callback cookie arrays before inspection", async () => {
+    const client = new FakeClient();
+    const extension = new QiMangaExtension(client);
+    const cookies = [
+      ...(Array.from({ length: 1_024 }, (_, index) => ({
+        name: `account_${index}`,
+        value: "ignored",
+        domain: ".qimanga.com",
+        path: "/",
+      })) as Cookie[]),
+      { name: "cf_clearance", value: "too-late", domain: ".qimanga.com", path: "/" },
+    ];
+
+    await extension.cloudflareBypassCompleted(
+      { url: "https://qimanga.com/", method: "GET" },
+      cookies,
+      {},
+    );
+
+    const stored = state.get("secure:qi_manga.secure_cookies") as Cookie[];
+    assert.deepEqual(stored, []);
+    assert.equal(client.cacheInvalidations, 1);
+
+    const throwingArray = new Proxy(
+      [{ name: "cf_clearance", value: "hidden", domain: ".qimanga.com", path: "/" }],
+      {
+        get: (target, property, receiver) => {
+          if (property === "0") throw new Error("malformed callback member");
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    await assert.doesNotReject(
+      extension.cloudflareBypassCompleted(
+        { url: "https://qimanga.com/", method: "GET" },
+        throwingArray,
+        {},
+      ),
+    );
+    assert.deepEqual(state.get("secure:qi_manga.secure_cookies"), []);
+
+    let nameReads = 0;
+    const changingCookie = new Proxy(
+      { name: "cf_clearance", value: "safe", domain: ".qimanga.com", path: "/" },
+      {
+        get: (target, property, receiver) => {
+          if (property === "name") {
+            nameReads += 1;
+            return nameReads === 1 ? "cf_clearance" : "accessToken";
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      },
+    );
+    await extension.cloudflareBypassCompleted(
+      { url: "https://qimanga.com/", method: "GET" },
+      [changingCookie],
+      {},
+    );
+    assert.equal(nameReads, 1);
+    assert.deepEqual(
+      (state.get("secure:qi_manga.secure_cookies") as Cookie[]).map(({ name }) => name),
+      ["cf_clearance"],
+    );
+  });
+
   it("persists only accepted bypass cookies and invalidates account-sensitive caches", async () => {
     const client = new FakeClient();
     const extension = new QiMangaExtension(client);
     const cookies: Cookie[] = [
       { name: "cf_clearance", value: "ok", domain: ".qimanga.com", path: "/" },
+      { name: "accessToken", value: "unverified", domain: ".qimanga.com", path: "/" },
       { name: "foreign", value: "no", domain: "example.com", path: "/" },
     ];
 

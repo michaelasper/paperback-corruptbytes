@@ -53,7 +53,7 @@ describe("NovelDash authentication", () => {
       method: "GET",
     });
     assert.deepEqual(firstParty.cookies, { "__Secure-authjs.session-token": "secret" });
-    assert.deepEqual(media.cookies, {});
+    assert.equal("cookies" in media, false);
   });
 
   it("recognizes Auth.js sessions and rejects deceptive domains", () => {

@@ -3,7 +3,7 @@ import { ContentRating, SourceIntents, type ExtensionInfo } from "@paperback/typ
 export default {
   name: "Qi Manga",
   description:
-    "Qi Manga comics and novels with complete discovery, live filters, stable IDs, and first-party access to purchased chapters.",
+    "Qi Manga comics and novels with complete discovery, frontend-supported filters, stable IDs, and first-party access to purchased chapters.",
   version: "1.0.0-alpha.4",
   icon: "icon.png",
   language: "en",

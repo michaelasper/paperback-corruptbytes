@@ -93,9 +93,9 @@ describe("VortexCookieInterceptor", () => {
     });
 
     assert.deepEqual(apiRequest.cookies, { "__Secure-vthemeauth.session_token": "token" });
-    assert.deepEqual(otherRequest.cookies, {});
-    assert.deepEqual(insecureRequest.cookies, {});
-    assert.deepEqual(storageRequest.cookies, {});
+    for (const neutral of [otherRequest, insecureRequest, storageRequest]) {
+      assert.equal("cookies" in neutral, false);
+    }
   });
 
   it("injects sessions when Paperback provides no browser URL global", async () => {
@@ -114,17 +114,18 @@ describe("VortexCookieInterceptor", () => {
   it("captures response cookies securely and deletion is persisted", async () => {
     const interceptor = new VortexCookieInterceptor();
     const cookie = sessionCookie({ expires: new Date(Date.now() + 60_000) });
+    const request = await interceptor.interceptRequest({
+      url: "https://api.vortexscans.org/api/me",
+      method: "GET",
+    });
     const response = {
+      url: request.url,
       status: 200,
       headers: {},
       cookies: [cookie, sessionCookie({ name: "foreign", domain: "example.com" })],
     } as Response;
 
-    await interceptor.interceptResponse(
-      { url: "https://api.vortexscans.org/api/me", method: "GET" } as Request,
-      response,
-      new ArrayBuffer(0),
-    );
+    await interceptor.interceptResponse(request, response, new ArrayBuffer(0));
     assert.deepEqual(interceptor.cookies, [cookie]);
 
     interceptor.deleteCookie(cookie);

@@ -70,7 +70,7 @@ export class AsyncKeyedCache<K, V> {
     if (!Number.isFinite(options.ttlMs) || options.ttlMs < 0) {
       throw new Error("AsyncKeyedCache ttlMs must be a non-negative finite number");
     }
-    if (!Number.isInteger(options.maxEntries) || options.maxEntries < 1) {
+    if (!Number.isSafeInteger(options.maxEntries) || options.maxEntries < 1) {
       throw new Error("AsyncKeyedCache maxEntries must be a positive integer");
     }
     if (
@@ -97,7 +97,8 @@ export class AsyncKeyedCache<K, V> {
 
   get(key: K, load: () => Promise<V>): Promise<V> {
     const existing = this.entries.get(key);
-    if (existing && (existing.pending || existing.expiresAt > this.now())) {
+    const now = existing && !existing.pending ? this.currentTime() : undefined;
+    if (existing && (existing.pending || (now !== undefined && existing.expiresAt > now))) {
       this.touch(key, existing);
       return existing.promise;
     }
@@ -171,12 +172,27 @@ export class AsyncKeyedCache<K, V> {
       }
     }
 
+    const now = this.currentTime();
+    if (now === undefined || !Number.isFinite(now + this.ttlMs)) {
+      this.removeIfCurrent(key, entry);
+      return;
+    }
+
     entry.pending = false;
-    entry.expiresAt = this.now() + this.ttlMs;
+    entry.expiresAt = now + this.ttlMs;
     entry.weight = weight;
     if (weight !== undefined) this.totalWeight += weight;
     this.touch(key, entry);
     this.evictOverflow(key);
+  }
+
+  private currentTime(): number | undefined {
+    try {
+      const value = this.now();
+      return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private touch(key: K, entry: CacheEntry<V>): void {
@@ -189,8 +205,9 @@ export class AsyncKeyedCache<K, V> {
       this.entries.size > this.maxEntries ||
       (this.maxWeight !== undefined && this.totalWeight > this.maxWeight)
     ) {
-      const oldestKey = this.entries.keys().next().value as K | undefined;
-      if (oldestKey === undefined) return;
+      const oldest = this.entries.keys().next();
+      if (oldest.done) return;
+      const oldestKey = oldest.value;
       if (oldestKey === newestKey && this.entries.size > 1) {
         this.touch(oldestKey, this.entries.get(oldestKey) as CacheEntry<V>);
         continue;
@@ -213,7 +230,11 @@ export class AsyncKeyedCache<K, V> {
     if (!entry) return;
     this.entries.delete(key);
     if (entry.weight !== undefined) {
-      this.totalWeight = Math.max(0, this.totalWeight - entry.weight);
+      let totalWeight = 0;
+      for (const remaining of this.entries.values()) {
+        if (remaining.weight !== undefined) totalWeight += remaining.weight;
+      }
+      this.totalWeight = totalWeight;
     }
   }
 }

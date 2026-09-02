@@ -14,6 +14,7 @@ import {
   fetchJson,
   fetchText,
   isNeutralMediaUrl,
+  isPublicFallbackAssetUrl,
   parseSeriesUrl,
   seriesIdToSlug,
   seriesSlugToId,
@@ -38,7 +39,7 @@ describe("Qi Manga URL contracts", () => {
     );
     assert.equal(
       buildBrowseUrl({ title: "", metadata: { status: "CANCELLED" } }, undefined, 1),
-      `${API_BASE_URL}/series?page=1&perPage=100&status=CANCELLED&sort=latest`,
+      `${API_BASE_URL}/series?page=1&perPage=100&sort=latest`,
     );
   });
 
@@ -67,6 +68,8 @@ describe("Qi Manga URL contracts", () => {
       buildChapterUrl(mangaId, "chapter-2%2E5"),
       `${API_BASE_URL}/series/i%27m-a-soldier-in-america/chapters/chapter-2.5`,
     );
+    assert.throws(() => buildSeriesUrl("%61".repeat(100)), /series ID is invalid/i);
+    assert.throws(() => buildChapterUrl(mangaId, "%61".repeat(100)), /chapter ID is invalid/i);
 
     const punctuated = seriesSlugToId("high-martiality:-three-thousand-emperors!");
     assert.equal(
@@ -83,6 +86,20 @@ describe("Qi Manga URL contracts", () => {
     assert.equal(isNeutralMediaUrl("http://media.qimanga.com/page.webp"), false);
     assert.equal(isNeutralMediaUrl("https://media.qimanga.com.evil.test/page.webp"), false);
     assert.equal(isNeutralMediaUrl("https://tracker.example/page.webp"), false);
+    assert.equal(isNeutralMediaUrl(`https://media.qimanga.com/${"x".repeat(2_100)}`), false);
+  });
+
+  it("recognizes only canonical equivalents of the public credential-neutral fallback", () => {
+    assert.equal(isPublicFallbackAssetUrl("https://qimanga.com/qiscans.ico?cache=1"), true);
+    assert.equal(isPublicFallbackAssetUrl("https://www.qimanga.com/%71iscans.ico"), true);
+    assert.equal(isPublicFallbackAssetUrl("https://qimanga.com/private/../qiscans.ico"), true);
+    assert.equal(isPublicFallbackAssetUrl("https://qimanga.com/qiscans.ico/../login"), false);
+    assert.equal(isPublicFallbackAssetUrl("http://qimanga.com/qiscans.ico"), false);
+    assert.equal(isPublicFallbackAssetUrl("https://evil.example/qiscans.ico"), false);
+    assert.equal(
+      isPublicFallbackAssetUrl(`https://qimanga.com/${"x".repeat(2_100)}/qiscans.ico`),
+      false,
+    );
   });
 
   it("parses first-party series URLs and rejects lookalike hosts and path traversal", () => {
@@ -97,6 +114,18 @@ describe("Qi Manga URL contracts", () => {
     assert.equal(parseSeriesUrl("https://qimanga.com.evil.test/series/title"), undefined);
     assert.equal(parseSeriesUrl("https://qimanga.com/series/%2E%2E"), undefined);
     assert.equal(parseSeriesUrl("https://qimanga.com/series/title%2Fother"), undefined);
+    assert.equal(parseSeriesUrl("https://qimanga.com/series/title/chapter/../login"), undefined);
+    assert.equal(
+      parseSeriesUrl("https://qimanga.com/series/title/chapter/%2e%2e/login"),
+      undefined,
+    );
+    assert.equal(
+      parseSeriesUrl("https://qimanga.com/series/title/chapter/%252e%252e/login"),
+      undefined,
+    );
+    assert.equal(parseSeriesUrl("https://qimanga.com/series/title/chapter%252fother"), undefined);
+    assert.equal(parseSeriesUrl(42 as unknown as string), undefined);
+    assert.equal(parseSeriesUrl(`https://qimanga.com/series/${"%61".repeat(100)}`), undefined);
     assert.equal(parseSeriesUrl(`https://qimanga.com/series/${"x".repeat(2_100)}`), undefined);
   });
 
@@ -105,7 +134,7 @@ describe("Qi Manga URL contracts", () => {
       buildBrowseUrl(
         {
           title: "",
-          metadata: { genre: "action%2fadmin", status: "INVALID", type: "AUDIOBOOK" },
+          metadata: { genre: " action ", status: "INVALID", type: "AUDIOBOOK" },
         },
         { id: "unsupported", label: "Unsupported" },
         1,
@@ -113,8 +142,14 @@ describe("Qi Manga URL contracts", () => {
       `${API_BASE_URL}/series?page=1&perPage=100&sort=latest`,
     );
     assert.throws(() => buildSearchUrl({ title: "x".repeat(257) }, 1), /term is too long/i);
+    assert.throws(() => buildSearchUrl({ title: "界".repeat(256) }, 1), /term is too long/i);
+    assert.throws(() => buildSearchUrl({ title: " ".repeat(4_097) }, 1), /term is too long/i);
+    assert.throws(() => buildSearchUrl({ title: "hero\u0000admin" }, 1), /term is invalid/i);
     assert.throws(() => buildSearchUrl({ title: "\ud800" }, 1), /term is invalid/i);
     assert.throws(() => buildSearchUrl({ title: "\udc00" }, 1), /term is invalid/i);
+    assert.throws(() => buildSearchUrl({ title: "hero\u200badmin" }, 1), /term is invalid/i);
+    assert.throws(() => buildSearchUrl({ title: "hero\uffff" }, 1), /term is invalid/i);
+    assert.throws(() => buildSearchUrl({ title: "hero\u{1fffe}" }, 1), /term is invalid/i);
     assert.match(buildSearchUrl({ title: "hero 😀" }, 1), /q=hero%20%F0%9F%98%80/);
   });
 
@@ -124,6 +159,11 @@ describe("Qi Manga URL contracts", () => {
       buildLatestUrl(Number.POSITIVE_INFINITY),
       `${API_BASE_URL}/home/latest?page=1&perPage=40`,
     );
+    assert.equal(
+      buildLatestUrl("2" as unknown as number),
+      `${API_BASE_URL}/home/latest?page=1&perPage=40`,
+    );
+    assert.equal(buildLatestUrl(1.9), `${API_BASE_URL}/home/latest?page=1&perPage=40`);
   });
 });
 
@@ -159,6 +199,7 @@ describe("Qi Manga response boundaries", () => {
         assert.ok(error instanceof Error);
         assert.match(error.message, /invalid JSON.*series\/search/i);
         assert.doesNotMatch(error.message, /secret|fragment/i);
+        assert.equal(error.cause, undefined);
         return true;
       },
     );
@@ -188,6 +229,11 @@ describe("Qi Manga response boundaries", () => {
         return "private";
       },
     });
+    await assert.rejects(
+      fetchText({ url: `${API_BASE_URL}/home`, method: "GET" }),
+      /response URL was not trusted/i,
+    );
+    install(200, "private", `https://api.qimanga.com/${"x".repeat(2_100)}`);
     await assert.rejects(
       fetchText({ url: `${API_BASE_URL}/home`, method: "GET" }),
       /response URL was not trusted/i,

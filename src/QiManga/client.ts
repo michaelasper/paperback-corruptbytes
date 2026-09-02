@@ -14,6 +14,7 @@ import { AsyncKeyedCache, utf8ByteLength } from "../shared/async-cache.js";
 import { SourceHttpError } from "../shared/http.js";
 import type { QiMangaSearchMetadata } from "./models.js";
 import {
+  CATALOG_PAGE_SIZE,
   buildBrowseUrl,
   buildChapterUrl,
   buildChaptersUrl,
@@ -23,6 +24,7 @@ import {
   buildSearchUrl,
   buildSeriesUrl,
   fetchText,
+  hasTitleSearchQuery,
   normalizePageNumber,
   parseJsonDocument,
   parseSeriesUrl,
@@ -43,6 +45,7 @@ import {
 // The live catalog includes Martial Peak at roughly 4,000 chapters (40 API pages).
 // Keep that title complete while retaining a hard 10,000-chapter safety ceiling.
 const MAX_CHAPTER_PAGES = 100;
+const MAX_TOTAL_CHAPTERS = MAX_CHAPTER_PAGES * CATALOG_PAGE_SIZE;
 const CHAPTER_PAGE_CONCURRENCY = 3;
 
 const rawCache = (ttlMs: number, maxEntries: number, maxBytes: number) =>
@@ -61,6 +64,10 @@ const searchItem = (manga: SourceManga): SearchResultItem => ({
 });
 
 export type QiMangaTextFetcher = (request: Request) => Promise<string>;
+export type QiMangaAuthenticationGeneration = () => number;
+
+const AUTHENTICATION_CHANGED_ERROR =
+  "Qi Manga authentication changed while this response was loading. Please try again.";
 
 export class QiMangaClient {
   private readonly homeCache = rawCache(2 * 60_000, 1, 2 * 1_024 * 1_024);
@@ -69,7 +76,33 @@ export class QiMangaClient {
   private readonly chapterListCache = rawCache(30_000, 64, 8 * 1_024 * 1_024);
   private readonly genreCache = rawCache(15 * 60_000, 1, 512 * 1_024);
 
-  constructor(private readonly fetchTextRequest: QiMangaTextFetcher = fetchText) {}
+  constructor(
+    private readonly fetchTextRequest: QiMangaTextFetcher = fetchText,
+    private readonly getAuthenticationGeneration: QiMangaAuthenticationGeneration = () => 0,
+  ) {}
+
+  private authenticationGeneration(): number {
+    try {
+      const generation = this.getAuthenticationGeneration();
+      if (Number.isSafeInteger(generation) && generation >= 0) return generation;
+    } catch {
+      // Runtime callbacks can violate their static contract.
+    }
+    throw new Error(AUTHENTICATION_CHANGED_ERROR);
+  }
+
+  private assertAuthenticationGeneration(expected: number): void {
+    if (this.authenticationGeneration() !== expected) {
+      throw new Error(AUTHENTICATION_CHANGED_ERROR);
+    }
+  }
+
+  private async fetchForAuthentication(request: Request, expected: number): Promise<string> {
+    this.assertAuthenticationGeneration(expected);
+    const body = await this.fetchTextRequest(request);
+    this.assertAuthenticationGeneration(expected);
+    return body;
+  }
 
   async getHome(): Promise<QiMangaHome> {
     const url = buildHomeUrl();
@@ -113,7 +146,7 @@ export class QiMangaClient {
     sortingOption: SortingOption | undefined,
     page: number,
   ): Promise<QiMangaSeriesPage> {
-    return query.title?.trim()
+    return hasTitleSearchQuery(query.title)
       ? this.getTitleSearchPage(query, page)
       : this.getBrowsePage(query, sortingOption, page);
   }
@@ -147,33 +180,41 @@ export class QiMangaClient {
   private async getChapterPage(
     sourceManga: SourceManga,
     page: number,
-    showLocked: boolean,
+    authenticationGeneration: number,
   ): Promise<QiMangaChapterPage> {
+    this.assertAuthenticationGeneration(authenticationGeneration);
     const expectedPage = normalizePageNumber(page);
     const url = buildChaptersUrl(sourceManga.mangaId, expectedPage, "asc");
-    return this.chapterListCache.getMapped(
-      url,
-      () => this.fetchTextRequest({ url, method: "GET" }),
+    const cacheKey = `${authenticationGeneration}:${url}`;
+    const parsed = await this.chapterListCache.getMapped(
+      cacheKey,
+      () => this.fetchForAuthentication({ url, method: "GET" }, authenticationGeneration),
       (body) => {
-        const parsed = parseChapterPage(
+        const pageResult = parseChapterPage(
           parseJsonDocument<unknown>(body, url),
           sourceManga,
-          showLocked,
+          true,
         );
-        if (parsed.page !== expectedPage) {
+        if (pageResult.page !== expectedPage) {
           throw new Error("Qi Manga returned the wrong chapter page.");
         }
-        return parsed;
+        return pageResult;
       },
     );
+    this.assertAuthenticationGeneration(authenticationGeneration);
+    return parsed;
   }
 
   async getChapters(
     sourceManga: SourceManga,
     options: { showLocked?: boolean; sinceDate?: Date } = {},
   ): Promise<Chapter[]> {
-    const showLocked = options.showLocked ?? true;
-    const first = await this.getChapterPage(sourceManga, 1, showLocked);
+    const showLocked = typeof options.showLocked === "boolean" ? options.showLocked : true;
+    const authenticationGeneration = this.authenticationGeneration();
+    const first = await this.getChapterPage(sourceManga, 1, authenticationGeneration);
+    if (first.totalCount > MAX_TOTAL_CHAPTERS) {
+      throw new Error("Qi Manga returned too many chapters to process safely.");
+    }
     const pages = [first];
     let totalPages = first.pageCount;
     let nextPage = 2;
@@ -188,10 +229,15 @@ export class QiMangaClient {
         (_, index) => nextPage + index,
       );
       const parsedPages = await Promise.all(
-        pageNumbers.map((page) => this.getChapterPage(sourceManga, page, showLocked)),
+        pageNumbers.map((page) => this.getChapterPage(sourceManga, page, authenticationGeneration)),
       );
       for (const parsed of parsedPages) {
-        totalPages = Math.max(totalPages, parsed.pageCount);
+        if (parsed.totalCount > MAX_TOTAL_CHAPTERS) {
+          throw new Error("Qi Manga returned too many chapters to process safely.");
+        }
+        if (parsed.pageCount !== totalPages) {
+          throw new Error("Qi Manga returned inconsistent declared chapter pagination.");
+        }
         pages.push(parsed);
       }
       nextPage = waveEnd + 1;
@@ -201,27 +247,58 @@ export class QiMangaClient {
       throw new Error("Qi Manga returned too many chapter pages to process safely.");
     }
     const chapters = finalizeChapters(pages.flatMap((page) => page.chapters));
-    const declaredCount = Math.max(0, ...pages.map((page) => page.totalCount ?? 0));
-    if (showLocked && declaredCount > 0 && chapters.length < declaredCount) {
+    const declaredCounts = new Set(pages.map((page) => page.totalCount));
+    if (declaredCounts.size > 1) {
+      throw new Error("Qi Manga returned inconsistent declared chapter totals.");
+    }
+    const declaredCount = declaredCounts.values().next().value as number;
+    if (chapters.length !== declaredCount) {
+      if (chapters.length < declaredCount) {
+        throw new Error(
+          `Qi Manga returned only ${chapters.length} of ${declaredCount} chapters; refusing to save a truncated list.`,
+        );
+      }
       throw new Error(
-        `Qi Manga returned only ${chapters.length} of ${declaredCount} chapters; refusing to save a truncated list.`,
+        `Qi Manga returned ${chapters.length} distinct chapters for a declared total of ${declaredCount}.`,
       );
     }
+    this.assertAuthenticationGeneration(authenticationGeneration);
 
+    const visibleChapters = showLocked
+      ? chapters
+      : chapters.filter((chapter) => chapter.additionalInfo?.locked === "false");
     const sinceDate = options.sinceDate;
-    if (!sinceDate || Number.isNaN(sinceDate.getTime())) return chapters;
-    return chapters.filter(
-      (chapter) => !chapter.publishDate || chapter.publishDate.getTime() > sinceDate.getTime(),
-    );
+    let sinceTime = Number.NaN;
+    if (sinceDate instanceof Date) {
+      try {
+        sinceTime = Date.prototype.getTime.call(sinceDate) as number;
+      } catch {
+        // Runtime bridge values can violate their static Date declaration.
+      }
+    }
+    if (!Number.isFinite(sinceTime)) return visibleChapters;
+    return visibleChapters.filter((chapter) => {
+      if (!chapter.publishDate) return true;
+      try {
+        const publishTime = Date.prototype.getTime.call(chapter.publishDate) as number;
+        return !Number.isFinite(publishTime) || publishTime > sinceTime;
+      } catch {
+        return true;
+      }
+    });
   }
 
   async getChapterDetails(chapter: Chapter): Promise<ChapterDetails> {
+    const authenticationGeneration = this.authenticationGeneration();
     const url = buildChapterUrl(chapter.sourceManga.mangaId, chapter.chapterId);
-    const body = await this.fetchTextRequest({
-      url,
-      method: "GET",
-      headers: { "cache-control": "no-store" },
-    });
+    const body = await this.fetchForAuthentication(
+      {
+        url,
+        method: "GET",
+        headers: { "cache-control": "no-store" },
+      },
+      authenticationGeneration,
+    );
     return parseChapterDetails(parseJsonDocument<unknown>(body, url), chapter);
   }
 

@@ -332,7 +332,7 @@ describe("Atsumaru response handling", () => {
     );
   });
 
-  it("classifies oversized rejected responses before decoding them", async () => {
+  it("enforces the body limit before classifying rejected responses", async () => {
     let decodeCalls = 0;
     install(401, "x".repeat(32 + 1));
     Object.assign(globalThis.Application, {
@@ -344,7 +344,7 @@ describe("Atsumaru response handling", () => {
 
     await assert.rejects(
       fetchTextResponse({ url: `${DOMAIN}/api`, method: "GET" }, { maxBytes: 32 }),
-      /status 401/i,
+      /too large|body limit/i,
     );
     assert.equal(decodeCalls, 0);
   });

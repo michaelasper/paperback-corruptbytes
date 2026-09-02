@@ -1,4 +1,9 @@
-import type { Request, SearchQuery, SortingOption } from "@paperback/types";
+import {
+  URL as PaperbackURL,
+  type Request,
+  type SearchQuery,
+  type SortingOption,
+} from "@paperback/types";
 
 import { fetchSourceText, requestContext } from "../shared/http.js";
 import {
@@ -48,27 +53,52 @@ const hasUnpairedSurrogate = (value: string): boolean => {
   return false;
 };
 
-export const normalizePageNumber = (page: number): number => {
-  const normalized = Math.trunc(page);
-  return Number.isSafeInteger(normalized) && normalized >= 1 && normalized <= 10_000
-    ? normalized
-    : 1;
+export const normalizePageNumber = (page: number): number =>
+  typeof page === "number" && Number.isSafeInteger(page) && page >= 1 && page <= 10_000 ? page : 1;
+
+const hasUnsafeQueryControl = (value: string): boolean => {
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (
+      codePoint <= 0x08 ||
+      codePoint === 0x0b ||
+      codePoint === 0x0c ||
+      (codePoint >= 0x0e && codePoint <= 0x1f) ||
+      (codePoint >= 0x7f && codePoint <= 0x9f) ||
+      /\p{Cf}/u.test(character) ||
+      (codePoint >= 0xfdd0 && codePoint <= 0xfdef) ||
+      (codePoint & 0xffff) >= 0xfffe
+    ) {
+      return true;
+    }
+  }
+  return false;
 };
 
 const MAX_SERIES_SLUG_LENGTH = 256;
+const MAX_RAW_SEARCH_TERM_LENGTH = 4_096;
 const MAX_SEARCH_TERM_LENGTH = 256;
-const VALID_STATUSES = new Set(["ONGOING", "COMPLETED", "HIATUS", "DROPPED", "CANCELLED"]);
+
+export const hasTitleSearchQuery = (value: unknown): boolean =>
+  typeof value === "string" && (value.length > MAX_RAW_SEARCH_TERM_LENGTH || Boolean(value.trim()));
+// Qi Manga's public filter UI exposes only these values. Other backend statuses
+// are parsed for display but intentionally cannot be synthesized as browse filters.
+const VALID_STATUSES = new Set(["ONGOING", "COMPLETED", "HIATUS", "DROPPED"]);
 const VALID_TYPES = new Set(["MANGA", "MANHWA", "MANHUA", "NOVEL"]);
 const VALID_SORTS = new Set(["latest", "newest", "popular", "alphabetical"]);
 
 const filterSlug = (value: string | undefined): string | undefined => {
-  const normalized = value?.trim();
-  return normalized && isValidSeriesSlug(normalized) ? normalized : undefined;
+  if (typeof value !== "string" || !value || value.length > MAX_SERIES_SLUG_LENGTH) {
+    return undefined;
+  }
+  return isValidSeriesSlug(value) ? value : undefined;
 };
 
 const enumValue = (value: string | undefined, allowed: ReadonlySet<string>): string | undefined => {
-  const normalized = value?.trim();
-  return normalized && allowed.has(normalized) ? normalized : undefined;
+  if (typeof value !== "string" || !value || value.length > 256 || hasUnpairedSurrogate(value)) {
+    return undefined;
+  }
+  return allowed.has(value) ? value : undefined;
 };
 
 /** Series slug coming from an API response; must survive use as both an ID and URL segment. */
@@ -78,6 +108,9 @@ export const isValidSeriesSlug = (value: string): boolean => {
 };
 
 export const seriesIdToSlug = (mangaId: string): string => {
+  if (typeof mangaId !== "string" || mangaId.length > MAX_SERIES_SLUG_LENGTH) {
+    throw new Error("Qi Manga series ID is invalid.");
+  }
   const decoded = decodePaperbackIdComponent(mangaId);
   if (!isValidSeriesSlug(decoded)) throw new Error("Qi Manga series ID is invalid.");
   return decoded;
@@ -106,19 +139,25 @@ export const buildBrowseUrl = (
 };
 
 export const buildSearchUrl = (query: SearchQuery<QiMangaSearchMetadata>, page: number): string => {
-  const title = normalizeSearchTerm(query.title ?? "");
-  if (title.length > MAX_SEARCH_TERM_LENGTH) {
+  const rawTitle = typeof query.title === "string" ? query.title : "";
+  if (rawTitle.length > MAX_RAW_SEARCH_TERM_LENGTH) {
     throw new Error("Qi Manga search term is too long.");
   }
-  if (hasUnpairedSurrogate(title)) {
+  if (hasUnpairedSurrogate(rawTitle) || hasUnsafeQueryControl(rawTitle)) {
     throw new Error("Qi Manga search term is invalid.");
+  }
+  const title = normalizeSearchTerm(rawTitle);
+  if (title.length > MAX_SEARCH_TERM_LENGTH) {
+    throw new Error("Qi Manga search term is too long.");
   }
   const parameters = queryString([
     ["page", normalizePageNumber(page)],
     ["perPage", CATALOG_PAGE_SIZE],
     ["q", title || undefined],
   ]);
-  return `${API_BASE_URL}/series/search?${parameters}`;
+  const url = `${API_BASE_URL}/series/search?${parameters}`;
+  if (url.length > 2_048) throw new Error("Qi Manga search term is too long.");
+  return url;
 };
 
 export const buildLatestUrl = (page: number): string =>
@@ -144,6 +183,9 @@ export const buildChaptersUrl = (mangaId: string, page: number, sort: "asc" | "d
   )}`;
 
 export const buildChapterUrl = (mangaId: string, chapterId: string): string => {
+  if (typeof chapterId !== "string" || chapterId.length > 256) {
+    throw new Error("Qi Manga chapter ID is invalid.");
+  }
   const chapterSlug = validateOpaqueId(decodePaperbackIdComponent(chapterId));
   if (!chapterSlug || encodePaperbackIdComponent(chapterSlug).length > 256) {
     throw new Error("Qi Manga chapter ID is invalid.");
@@ -152,11 +194,27 @@ export const buildChapterUrl = (mangaId: string, chapterId: string): string => {
 };
 
 export const parseSeriesUrl = (value: string): string | undefined => {
-  if (value.length > 2_048) return undefined;
+  if (typeof value !== "string" || value.length > 2_048) return undefined;
   const match = value
     .trim()
-    .match(/^https?:\/\/(?:www\.)?qimanga\.com\/series\/([^/?#]+)(?:\/[^?#]*)?(?:[?#].*)?$/i);
-  if (!match?.[1]) return undefined;
+    .match(/^https?:\/\/(?:www\.)?qimanga\.com\/series\/([^/?#]+)(\/[^?#]*)?(?:[?#].*)?$/i);
+  if (!match?.[1] || match[1].length > MAX_SERIES_SLUG_LENGTH) return undefined;
+  try {
+    for (const rawSegment of (match[2] ?? "").split("/")) {
+      if (!rawSegment) continue;
+      const segment = decodeURIComponent(rawSegment);
+      if (
+        segment === "." ||
+        segment === ".." ||
+        /[/\\]/u.test(segment) ||
+        /%(?:2e|2f|5c)/iu.test(segment)
+      ) {
+        return undefined;
+      }
+    }
+  } catch {
+    return undefined;
+  }
   let slug: string | undefined;
   try {
     slug = decodeURIComponent(match[1]);
@@ -167,7 +225,34 @@ export const parseSeriesUrl = (value: string): string | undefined => {
   return seriesSlugToId(slug);
 };
 
-export const isApiRequestUrl = (value: string): boolean => isHttpsUrlForHosts(value, API_HOSTS);
+export const isApiRequestUrl = (value: string): boolean =>
+  typeof value === "string" && value.length <= 2_048 && isHttpsUrlForHosts(value, API_HOSTS);
+
+const FALLBACK_HOSTS = new Set(["qimanga.com", "www.qimanga.com"]);
+
+/** The public fallback icon is content-only and must never inherit account credentials. */
+export const isPublicFallbackAssetUrl = (value: string): boolean => {
+  if (
+    typeof value !== "string" ||
+    value.length > 2_048 ||
+    !isHttpsUrlForHosts(value, FALLBACK_HOSTS)
+  ) {
+    return false;
+  }
+  try {
+    const url = new PaperbackURL(value);
+    const decodedPath = decodeURIComponent(url.path).replace(/\\/g, "/");
+    const segments: string[] = [];
+    for (const segment of decodedPath.split("/")) {
+      if (!segment || segment === ".") continue;
+      if (segment === "..") segments.pop();
+      else segments.push(segment);
+    }
+    return `/${segments.join("/")}` === "/qiscans.ico";
+  } catch {
+    return false;
+  }
+};
 
 const MEDIA_HOSTS = new Set([
   "media.qimanga.com",
@@ -178,13 +263,14 @@ const MEDIA_HOSTS = new Set([
 ]);
 
 /** API-provided media must use an observed HTTPS CDN and never carry account cookies. */
-export const isNeutralMediaUrl = (value: string): boolean => isHttpsUrlForHosts(value, MEDIA_HOSTS);
+export const isNeutralMediaUrl = (value: string): boolean =>
+  typeof value === "string" && value.length <= 2_048 && isHttpsUrlForHosts(value, MEDIA_HOSTS);
 
 const RESPONSE_OPTIONS = {
   sourceName: "Qi Manga",
   maxBodyBytes: 4 * 1_024 * 1_024,
   isResponseUrlAllowed: (requestUrl: string, responseUrl: string) =>
-    isHttpsUrlForHosts(requestUrl, API_HOSTS) && isHttpsUrlForHosts(responseUrl, API_HOSTS),
+    isApiRequestUrl(requestUrl) && isApiRequestUrl(responseUrl),
 } as const;
 
 export const fetchText = (request: Request): Promise<string> =>
@@ -196,10 +282,9 @@ export const parseJsonDocument = <T>(body: string, requestUrl: string): T => {
   }
   try {
     return JSON.parse(body) as T;
-  } catch (error: unknown) {
-    throw new Error(`Qi Manga returned invalid JSON for ${requestContext(requestUrl)}.`, {
-      cause: error,
-    });
+  } catch {
+    // JSON.parse errors can quote attacker-controlled body fragments; omit the cause.
+    throw new Error(`Qi Manga returned invalid JSON for ${requestContext(requestUrl)}.`);
   }
 };
 

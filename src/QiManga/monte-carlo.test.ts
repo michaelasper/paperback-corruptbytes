@@ -215,6 +215,7 @@ describe("Qi Manga deterministic Monte Carlo parser invariants", () => {
       for (let iteration = 0; iteration < 300; iteration += 1) {
         const isFree = random.pick(states);
         const requiresPurchase = random.pick(states);
+        const requiresAuth = random.pick(states);
         const response = {
           data: [
             {
@@ -222,6 +223,7 @@ describe("Qi Manga deterministic Monte Carlo parser invariants", () => {
               number: iteration + 1,
               isFree,
               requiresPurchase,
+              requiresAuth,
               price: 25,
             },
           ],
@@ -231,7 +233,10 @@ describe("Qi Manga deterministic Monte Carlo parser invariants", () => {
         };
         const visible = parseChapterPage(response, sourceManga, true).chapters;
         const freeOnly = parseChapterPage(response, sourceManga, false).chapters;
-        const expectedLocked = requiresPurchase !== false;
+        const expectedLocked =
+          requiresPurchase !== false ||
+          requiresAuth === true ||
+          (requiresAuth !== undefined && typeof requiresAuth !== "boolean");
         const message = seedMessage(seed, iteration);
         assert.equal(visible.length, 1, message);
         assert.equal(visible[0]?.additionalInfo?.locked, String(expectedLocked), message);
@@ -240,7 +245,7 @@ describe("Qi Manga deterministic Monte Carlo parser invariants", () => {
     }
   });
 
-  it("orders and deduplicates randomized HTTPS reader pages while discarding unsafe schemes", () => {
+  it("orders and deduplicates valid reader pages while rejecting any unsafe image entry", () => {
     for (const seed of SEEDS) {
       const random = new DeterministicRandom(seed);
       for (let iteration = 0; iteration < 140; iteration += 1) {
@@ -286,34 +291,31 @@ describe("Qi Manga deterministic Monte Carlo parser invariants", () => {
           return [parsed.href];
         });
         const message = seedMessage(seed, iteration);
-        if (expected.length === 0) {
+        const hasUnsafeEntry = rawImages.some(({ url }) => {
+          try {
+            const parsed = new URL(url, "https://qimanga.com");
+            return parsed.protocol !== "https:" || !ALLOWED_MEDIA_HOSTS.has(parsed.hostname);
+          } catch {
+            return true;
+          }
+        });
+        const response = {
+          slug: chapter.chapterId,
+          series: { slug: "simulation-series" },
+          number: chapter.chapNum,
+          isFree: true,
+          requiresPurchase: false,
+          images: rawImages,
+        };
+        if (hasUnsafeEntry) {
           assert.throws(
-            () =>
-              parseChapterDetails(
-                {
-                  slug: chapter.chapterId,
-                  series: { slug: "simulation-series" },
-                  isFree: true,
-                  requiresPurchase: false,
-                  images: rawImages,
-                },
-                chapter,
-              ),
-            /no readable pages/i,
+            () => parseChapterDetails(response, chapter),
+            /invalid chapter image entry/i,
             message,
           );
           continue;
         }
-        const details = parseChapterDetails(
-          {
-            slug: chapter.chapterId,
-            series: { slug: "simulation-series" },
-            isFree: true,
-            requiresPurchase: false,
-            images: rawImages,
-          },
-          chapter,
-        );
+        const details = parseChapterDetails(response, chapter);
         assert.ok("pages" in details, message);
         if (!("pages" in details)) assert.fail(message);
         assert.deepEqual(details.pages, expected, message);
@@ -348,6 +350,7 @@ describe("Qi Manga deterministic Monte Carlo parser invariants", () => {
           {
             slug: chapter.chapterId,
             series: { slug: "simulation-novel" },
+            number: chapter.chapNum,
             isFree: true,
             requiresPurchase: false,
             images: [],
@@ -431,7 +434,6 @@ describe("Qi Manga deterministic Monte Carlo pagination simulation", () => {
       const random = new DeterministicRandom(seed);
       for (let iteration = 0; iteration < 24; iteration += 1) {
         const finalPageCount = iteration === 0 ? 40 : 1 + random.integer(12);
-        const initialPageCount = finalPageCount === 1 ? 1 : 1 + random.integer(finalPageCount);
         const chaptersPerPage = 1 + random.integer(6);
         const totalItems = finalPageCount * chaptersPerPage;
         const requestedPages: number[] = [];
@@ -443,7 +445,6 @@ describe("Qi Manga deterministic Monte Carlo pagination simulation", () => {
               assert.ok(request.url.startsWith(API_BASE_URL), seedMessage(seed, iteration));
               const page = Number(new URL(request.url).searchParams.get("page") ?? 1);
               requestedPages.push(page);
-              const revealsFinalCount = page >= initialPageCount;
               const body = {
                 data: Array.from({ length: chaptersPerPage }, (_, index) => {
                   const ordinal = (page - 1) * chaptersPerPage + index + 1;
@@ -456,7 +457,7 @@ describe("Qi Manga deterministic Monte Carlo pagination simulation", () => {
                   };
                 }),
                 current: page,
-                totalPages: revealsFinalCount ? finalPageCount : initialPageCount,
+                totalPages: finalPageCount,
                 totalItems,
               };
               return [

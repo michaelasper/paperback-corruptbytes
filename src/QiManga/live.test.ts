@@ -1,16 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { QiMangaClient } from "./client.js";
 import {
   buildBrowseUrl,
   buildChapterUrl,
   buildChaptersUrl,
   buildGenresUrl,
   buildHomeUrl,
+  buildSearchUrl,
   buildSeriesUrl,
   seriesSlugToId,
 } from "./network.js";
 import {
+  AUTH_REQUIRED_ERROR,
   LOCKED_ERROR,
   finalizeChapters,
   parseChapterDetails,
@@ -45,7 +48,7 @@ const requestJson = async (url: string): Promise<unknown> => {
 
 describe("Qi Manga live public contract", () => {
   live("keeps every enabled home rail, taxonomy, and filtered novel browse live", async () => {
-    const [homeResponse, genreResponse, novelResponse, cancelledResponse] = await Promise.all([
+    const [homeResponse, genreResponse, novelResponse] = await Promise.all([
       requestJson(buildHomeUrl()),
       requestJson(buildGenresUrl()),
       requestJson(
@@ -55,12 +58,27 @@ describe("Qi Manga live public contract", () => {
           1,
         ),
       ),
-      requestJson(buildBrowseUrl({ title: "", metadata: { status: "CANCELLED" } }, undefined, 1)),
     ]);
+    const [titleResponse, filteredResponse, newestResponse, alphabeticalResponse] =
+      await Promise.all([
+        requestJson(buildSearchUrl({ title: "supreme demon swordmaster" }, 1)),
+        requestJson(
+          buildBrowseUrl(
+            { title: "", metadata: { genre: "action", status: "ONGOING" } },
+            { id: "popular", label: "Popular" },
+            1,
+          ),
+        ),
+        requestJson(buildBrowseUrl({ title: "" }, { id: "newest", label: "Newest" }, 1)),
+        requestJson(buildBrowseUrl({ title: "" }, { id: "alphabetical", label: "Title: A–Z" }, 1)),
+      ]);
     const home = parseHome(homeResponse);
     const genres = parseGenres(genreResponse);
     const novels = parseSeriesPage(novelResponse);
-    const cancelled = parseSeriesPage(cancelledResponse);
+    const titleResults = parseSeriesPage(titleResponse);
+    const filtered = parseSeriesPage(filteredResponse);
+    const newest = parseSeriesPage(newestResponse);
+    const alphabetical = parseSeriesPage(alphabeticalResponse);
 
     assert.ok(home.banners.length > 0);
     assert.ok(home.popular.length > 0);
@@ -72,8 +90,11 @@ describe("Qi Manga live public contract", () => {
     assert.ok(novels.items.length > 0);
     assert.ok(novels.items.every((item) => item.type === "NOVEL"));
     assert.ok(novels.items.some((item) => item.mangaId.includes("%27")));
-    assert.ok(cancelled.items.length > 0);
-    assert.ok(cancelled.items.every((item) => item.status === "CANCELLED"));
+    assert.ok(titleResults.items.some((item) => item.mangaId === "the-supreme-demon-swordmaster"));
+    assert.ok(filtered.items.length > 0);
+    assert.ok(filtered.items.every((item) => item.status === "ONGOING"));
+    assert.ok(newest.items.length > 0);
+    assert.ok(alphabetical.items.length > 0);
   });
 
   live("preserves a comic ID, full chapter list, and ordered live image reader", async () => {
@@ -107,6 +128,42 @@ describe("Qi Manga live public contract", () => {
     assert.ok(imageResponse.ok || imageResponse.status === 206);
     assert.match(imageResponse.headers.get("content-type") ?? "", /^image\//);
     await imageResponse.body?.cancel();
+  });
+
+  live("loads a complete multi-page chapter history through the production client", async () => {
+    let chapterPageRequests = 0;
+    let declaredCount: number | undefined;
+    let nextRequestSlot = Promise.resolve();
+    const client = new QiMangaClient(async (request) => {
+      const requestSlot = nextRequestSlot;
+      nextRequestSlot = requestSlot.then(
+        () => new Promise<void>((resolve) => setTimeout(resolve, 300)),
+      );
+      await requestSlot;
+      const document = await requestJson(request.url);
+      if (/\/chapters\?/.test(request.url)) {
+        chapterPageRequests += 1;
+        if (new URL(request.url).searchParams.get("page") === "1") {
+          const candidate = (document as { totalItems?: unknown }).totalItems;
+          if (typeof candidate === "number" && Number.isSafeInteger(candidate)) {
+            declaredCount = candidate;
+          }
+        }
+      }
+      return JSON.stringify(document);
+    });
+    const manga = await client.getMangaDetails("martial-peak");
+    const chapters = await client.getChapters(manga, { showLocked: true });
+
+    assert.ok(chapterPageRequests > 1);
+    assert.ok((declaredCount ?? 0) > 100);
+    assert.equal(chapters.length, declaredCount);
+    assert.equal(new Set(chapters.map((chapter) => chapter.chapterId)).size, chapters.length);
+    assert.ok(
+      chapters.every(
+        (chapter, index) => index === 0 || chapter.chapNum >= chapters[index - 1]!.chapNum,
+      ),
+    );
   });
 
   live("keeps the legacy Quantum Scans image CDN readable", async () => {
@@ -153,21 +210,41 @@ describe("Qi Manga live public contract", () => {
     assert.doesNotMatch(details.html, /<script|<iframe|\son\w+=|javascript:/i);
   });
 
-  live("keeps a known paid chapter server-locked and returns no fabricated pages", async () => {
+  live("honors the live account-specific access decision without fabricating pages", async () => {
     const mangaId = "the-supreme-demon-swordmaster";
     const [detailResponse, chapterResponse] = await Promise.all([
       requestJson(buildSeriesUrl(mangaId)),
       requestJson(buildChaptersUrl(mangaId, 1, "asc")),
     ]);
     const manga = parseMangaDetails(detailResponse, mangaId);
-    const locked = parseChapterPage(chapterResponse, manga, true).chapters.find(
-      (chapter) => chapter.additionalInfo?.locked === "true",
-    );
-    assert.ok(locked, "The live contract requires at least one paid chapter.");
+    const chapters = parseChapterPage(chapterResponse, manga, true).chapters;
+    const candidate =
+      chapters.find((chapter) => chapter.additionalInfo?.locked === "true") ?? chapters.at(-1);
+    assert.ok(candidate);
 
-    const lockedResponse = await requestJson(buildChapterUrl(mangaId, locked.chapterId));
-    assert.deepEqual((lockedResponse as { images?: unknown[] }).images, []);
-    assert.equal((lockedResponse as { requiresPurchase?: unknown }).requiresPurchase, true);
-    assert.throws(() => parseChapterDetails(lockedResponse, locked), new RegExp(LOCKED_ERROR));
+    const response = await requestJson(buildChapterUrl(mangaId, candidate.chapterId));
+    const access = response as {
+      images?: unknown[];
+      requiresAuth?: unknown;
+      requiresPurchase?: unknown;
+    };
+    assert.equal(typeof access.requiresPurchase, "boolean");
+    if (access.requiresAuth === true) {
+      assert.throws(
+        () => parseChapterDetails(response, candidate),
+        new RegExp(AUTH_REQUIRED_ERROR),
+      );
+      return;
+    }
+    if (
+      access.requiresPurchase ||
+      (access.requiresAuth !== undefined && typeof access.requiresAuth !== "boolean")
+    ) {
+      assert.throws(() => parseChapterDetails(response, candidate), new RegExp(LOCKED_ERROR));
+      return;
+    }
+
+    const details = parseChapterDetails(response, candidate);
+    assert.ok("pages" in details && details.pages.length > 0);
   });
 });

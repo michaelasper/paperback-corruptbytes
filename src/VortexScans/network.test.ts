@@ -178,7 +178,7 @@ describe("fetchJSON", () => {
     assert.equal(decodeCalls, 0);
   });
 
-  it("classifies oversized authentication failures before decoding them", async () => {
+  it("enforces the body limit before classifying authentication failures", async () => {
     let decodeCalls = 0;
     installApplication(401, "x".repeat(8 * 1_024 * 1_024 + 1));
     Object.assign(globalThis.Application, {
@@ -190,7 +190,7 @@ describe("fetchJSON", () => {
 
     await assert.rejects(
       fetchJSON({ url: "https://api.vortexscans.org/api/private", method: "GET" }),
-      /log in.*Vortex/i,
+      /too large|body limit/i,
     );
     assert.equal(decodeCalls, 0);
   });

@@ -199,11 +199,8 @@ export const COMIC_CHAPTER_RESPONSE = {
     { id: 12, url: "https://media.qimanga.com/pages/02.webp", order: 2 },
     { id: 11, url: "https://media.qimanga.com/pages/01.webp", order: 1 },
     { id: 13, url: "https://media.qimanga.com/pages/02.webp", order: 3 },
-    { id: 14, url: "http://media.qimanga.com/pages/insecure.webp", order: 4 },
-    { id: 15, url: "javascript:alert(1)", order: 5 },
-    { id: 16, url: "https://tracker.example/pages/foreign.webp", order: 6 },
   ],
-  totalImages: 6,
+  totalImages: 3,
   createdAt: "2026-01-03T12:00:00.000Z",
 };
 
@@ -214,7 +211,7 @@ export const NOVEL_CHAPTER_RESPONSE = {
   number: 32,
   title: "",
   content:
-    '<p>First &amp; safe.</p><script>steal()</script><p onclick="steal()">Second.</p><img src="https://tracker.example/pixel.png"><img src="https://media.qiscans.org/illustration.webp"><a href="javascript:alert(1)">bad link</a>',
+    '<p>First &amp; safe.</p><script>steal()</script><p onclick="steal()">Second.</p><img src="https://tracker.example/pixel.png"><img src="https://media.qiscans.org/illustration.webp"><a href="javascript:alert(1)">bad link</a><a href="https://evil.example/phish">external</a><a href="#note">note</a>',
   isFree: true,
   requiresPurchase: false,
   images: [],

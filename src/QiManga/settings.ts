@@ -11,6 +11,7 @@ import {
 import {
   fetchQiMangaAccountStatus,
   hasQiMangaAuthCookies,
+  invalidateQiMangaAuth,
   replaceQiMangaCookies,
   signOutQiManga,
   type QiMangaAccountStatus,
@@ -20,13 +21,20 @@ import { DOMAIN } from "./network.js";
 
 const SHOW_LOCKED_KEY = "qi_manga.show_locked_chapters";
 const LOGIN_URL = `${DOMAIN}/login`;
+const authenticationOperations = new WeakMap<QiMangaCookieStore, number>();
 
 export const getShowLockedChapters = (): boolean => {
-  const stored = Application.getState(SHOW_LOCKED_KEY);
-  return typeof stored === "boolean" ? stored : true;
+  try {
+    const stored = Application.getState(SHOW_LOCKED_KEY);
+    return typeof stored === "boolean" ? stored : true;
+  } catch {
+    return true;
+  }
 };
 
 export class QiMangaSettingsForm extends Form {
+  private authenticationOperation = 0;
+
   constructor(
     private readonly cookieStore: QiMangaCookieStore,
     public account: QiMangaAccountStatus,
@@ -35,26 +43,60 @@ export class QiMangaSettingsForm extends Form {
     super();
   }
 
+  private beginAuthenticationOperation(): number {
+    const operation = (authenticationOperations.get(this.cookieStore) ?? 0) + 1;
+    authenticationOperations.set(this.cookieStore, operation);
+    this.authenticationOperation = operation;
+    return operation;
+  }
+
+  private isAuthenticationOperationCurrent(operation: number): boolean {
+    return (
+      operation === this.authenticationOperation &&
+      operation === authenticationOperations.get(this.cookieStore)
+    );
+  }
+
   async handleShowLockedChange(value: boolean): Promise<void> {
+    if (typeof value !== "boolean") return;
     Application.setState(value, SHOW_LOCKED_KEY);
     this.reloadForm();
   }
 
   async handleLoginComplete(cookies: Cookie[]): Promise<void> {
+    const operation = this.beginAuthenticationOperation();
     replaceQiMangaCookies(this.cookieStore, cookies);
-    this.account = await fetchQiMangaAccountStatus(this.cookieStore);
+    const account = await fetchQiMangaAccountStatus(this.cookieStore, () =>
+      this.isAuthenticationOperationCurrent(operation),
+    );
+    if (!this.isAuthenticationOperationCurrent(operation)) return;
+
+    this.account = account;
+    // Captured WebView credentials are untrusted until this exact imported session
+    // verifies. Never retain them after an ambiguous, malformed, or failed check.
+    if (!account.authenticated) invalidateQiMangaAuth(this.cookieStore);
     this.onAuthenticationChanged();
     this.reloadForm();
   }
 
   async handleLoginCancel(): Promise<void> {
-    this.account = await fetchQiMangaAccountStatus(this.cookieStore);
+    const operation = this.beginAuthenticationOperation();
+    const account = await fetchQiMangaAccountStatus(this.cookieStore, () =>
+      this.isAuthenticationOperationCurrent(operation),
+    );
+    if (!this.isAuthenticationOperationCurrent(operation)) return;
+
+    this.account = account;
+    if (!account.authenticated) invalidateQiMangaAuth(this.cookieStore);
     this.onAuthenticationChanged();
     this.reloadForm();
   }
 
   async handleLogout(): Promise<void> {
+    const operation = this.beginAuthenticationOperation();
     await signOutQiManga(this.cookieStore);
+    if (!this.isAuthenticationOperationCurrent(operation)) return;
+
     this.onAuthenticationChanged();
     this.account = { authenticated: false };
     this.reloadForm();

@@ -40,8 +40,17 @@ const CHALLENGE_MARKERS = [
 export const headerValue = (
   headers: Record<string, string> | undefined,
   name: string,
-): string | undefined =>
-  Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === name.toLowerCase())?.[1];
+): string | undefined => {
+  try {
+    const expected = name.toLowerCase();
+    const match = Object.entries(headers ?? {}).find(
+      ([key, value]) => key.toLowerCase() === expected && typeof value === "string",
+    );
+    return match?.[1];
+  } catch {
+    return undefined;
+  }
+};
 
 export const setHeaderIfMissing = (
   headers: Record<string, string>,
@@ -98,6 +107,19 @@ const isImageRequest = (url: string): boolean => {
   }
 };
 
+const cloneStringHeaders = (value: unknown): Record<string, string> => {
+  try {
+    return Object.fromEntries(
+      Object.entries(value ?? {}).filter(
+        ([name, headerValue]) =>
+          name.length > 0 && name.length <= 256 && typeof headerValue === "string",
+      ),
+    );
+  } catch {
+    return {};
+  }
+};
+
 const stripUntrustedSensitiveHeaders = (headers: Record<string, string>): void => {
   for (const name of Object.keys(headers)) {
     if (UNTRUSTED_SENSITIVE_HEADERS.has(name.toLowerCase())) delete headers[name];
@@ -120,26 +142,31 @@ const isSafeHttpsUrl = (value: string): boolean => {
 
 /** Remove credentials before allowing a neutral third-party redirect to continue. */
 const sanitizeNeutralRedirect = (request: Request): Request => {
-  const sanitized: Request = { ...request };
-  if (request.headers) {
-    sanitized.headers = { ...request.headers };
-    stripUntrustedSensitiveHeaders(sanitized.headers);
-  }
-  delete sanitized.cookies;
-  delete sanitized.body;
-  return sanitized;
+  const headers = cloneStringHeaders(request.headers);
+  stripUntrustedSensitiveHeaders(headers);
+  return {
+    url: request.url,
+    method: request.method,
+    ...(Object.keys(headers).length > 0 && { headers }),
+  };
 };
 
-const isSafeNeutralRedirectMethod = (method: string): boolean => {
-  const normalized = method.trim().toUpperCase();
-  return normalized === "GET" || normalized === "HEAD";
-};
+const isSafeNeutralRedirectMethod = (method: string): boolean => /^(?:GET|HEAD)$/i.test(method);
 
 export const decodeResponseBody = (data: ArrayBuffer): string => {
+  if (!(data instanceof ArrayBuffer)) {
+    throw new Error("Response body could not be decoded safely.");
+  }
   try {
-    return Application.arrayBufferToUTF8String(data);
+    const decoded = Application.arrayBufferToUTF8String(data);
+    if (typeof decoded === "string") return decoded;
   } catch {
+    // Fall back to the platform decoder without retaining the decoder error.
+  }
+  try {
     return new TextDecoder().decode(data);
+  } catch {
+    throw new Error("Response body could not be decoded safely.");
   }
 };
 
@@ -155,17 +182,23 @@ export class SourceHttpError extends Error {
   readonly sourceName: string;
   readonly status: number;
 
-  constructor(sourceName: string, status: number) {
+  constructor(sourceName: string, status: unknown) {
+    const trustedStatus =
+      typeof status === "number" && Number.isSafeInteger(status) && status >= 100 && status <= 599
+        ? status
+        : undefined;
     const message =
-      status === 404
+      trustedStatus === 404
         ? `${sourceName} content was not found.`
-        : status === 429
+        : trustedStatus === 429
           ? `${sourceName} rate limit reached. Please wait and try again.`
-          : `${sourceName} request failed with status ${status}.`;
+          : trustedStatus === undefined
+            ? `${sourceName} request returned an invalid HTTP status.`
+            : `${sourceName} request failed with status ${trustedStatus}.`;
     super(message);
     this.name = "SourceHttpError";
     this.sourceName = sourceName;
-    this.status = status;
+    this.status = trustedStatus ?? -1;
   }
 }
 
@@ -182,18 +215,71 @@ export interface ScheduledRawResponse {
   data: ArrayBuffer;
 }
 
+/** Read one protocol status value without trusting hostile runtime accessors. */
+export const responseStatus = (response: unknown): number | undefined => {
+  try {
+    if (response === null || typeof response !== "object") return undefined;
+    const status = (response as Partial<Response>).status;
+    return typeof status === "number" &&
+      Number.isSafeInteger(status) &&
+      status >= 100 &&
+      status <= 599
+      ? status
+      : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 /** Schedule a raw response after enforcing both the initial and final URL boundary. */
 export const scheduleRawResponse = async (
   request: Request,
   options: SourceResponseOptions,
 ): Promise<ScheduledRawResponse> => {
   const isResponseUrlAllowed = options.isResponseUrlAllowed;
-  if (isResponseUrlAllowed && !isResponseUrlAllowed(request.url, request.url)) {
+  let requestUrl: string;
+  try {
+    requestUrl = request.url;
+    if (typeof requestUrl !== "string" || !requestUrl) throw new Error("Invalid request URL.");
+  } catch {
     throw new Error(`${options.sourceName} response URL was not trusted.`);
   }
-  const [response, data] = await Application.scheduleRequest(request);
-  if (isResponseUrlAllowed && !isResponseUrlAllowed(request.url, response.url)) {
-    throw new Error(`${options.sourceName} response URL was not trusted.`);
+  if (isResponseUrlAllowed) {
+    try {
+      if (isResponseUrlAllowed(requestUrl, requestUrl) !== true) {
+        throw new Error("Untrusted request URL.");
+      }
+    } catch {
+      throw new Error(`${options.sourceName} response URL was not trusted.`);
+    }
+  }
+
+  const scheduled = await Application.scheduleRequest(request);
+  let response: Response;
+  let data: ArrayBuffer;
+  try {
+    if (!Array.isArray(scheduled) || scheduled.length < 2) {
+      throw new Error("Invalid scheduled response.");
+    }
+    response = scheduled[0];
+    data = scheduled[1];
+  } catch {
+    throw new Error(`${options.sourceName} response was invalid.`);
+  }
+
+  if (isResponseUrlAllowed) {
+    try {
+      const responseUrl = response.url;
+      if (
+        typeof responseUrl !== "string" ||
+        !responseUrl ||
+        isResponseUrlAllowed(requestUrl, responseUrl) !== true
+      ) {
+        throw new Error("Untrusted response URL.");
+      }
+    } catch {
+      throw new Error(`${options.sourceName} response URL was not trusted.`);
+    }
   }
   return { response, data };
 };
@@ -203,7 +289,17 @@ export const assertResponseBodyWithinLimit = (
   data: ArrayBuffer,
   options: SourceResponseOptions,
 ): void => {
-  if (data.byteLength > responseLimit(options)) {
+  let byteLength: number;
+  try {
+    if (!(data instanceof ArrayBuffer)) throw new Error("Invalid response body.");
+    byteLength = data.byteLength;
+  } catch {
+    throw new Error(`${options.sourceName} response body was invalid.`);
+  }
+  if (!Number.isSafeInteger(byteLength) || byteLength < 0) {
+    throw new Error(`${options.sourceName} response body was invalid.`);
+  }
+  if (byteLength > responseLimit(options)) {
     throw new Error(`${options.sourceName} response was too large to process safely.`);
   }
 };
@@ -228,8 +324,9 @@ export const scheduleTextResponse = async (
 };
 
 const assertSuccessfulStatus = (response: Response, options: SourceResponseOptions): void => {
-  if (response.status < 200 || response.status >= 300) {
-    throw new SourceHttpError(options.sourceName, response.status);
+  const status = responseStatus(response);
+  if (status === undefined || status < 200 || status >= 300) {
+    throw new SourceHttpError(options.sourceName, status);
   }
 };
 
@@ -239,8 +336,8 @@ export const fetchSourceText = async (
   options: SourceResponseOptions,
 ): Promise<string> => {
   const { response, data } = await scheduleRawResponse(request, options);
-  assertSuccessfulStatus(response, options);
   assertResponseBodyWithinLimit(data, options);
+  assertSuccessfulStatus(response, options);
   return decodeResponseBody(data);
 };
 
@@ -250,8 +347,8 @@ export const fetchSourceTextResponse = async (
   options: SourceResponseOptions,
 ): Promise<{ response: Response; body: string }> => {
   const { response, data } = await scheduleRawResponse(request, options);
-  assertSuccessfulStatus(response, options);
   assertResponseBodyWithinLimit(data, options);
+  assertSuccessfulStatus(response, options);
   return { response, body: decodeResponseBody(data) };
 };
 
@@ -268,22 +365,29 @@ export const fetchSourceJson = async <T = unknown>(
   }
   try {
     return JSON.parse(body) as T;
-  } catch (error: unknown) {
-    throw new Error(`${options.sourceName} returned invalid JSON.`, { cause: error });
+  } catch {
+    // Modern JSON.parse errors may quote response fragments; never retain them as a cause.
+    throw new Error(`${options.sourceName} returned invalid JSON.`);
   }
 };
 
 export const isCloudflareChallenge = (response: Response, data: ArrayBuffer): boolean => {
-  if (headerValue(response.headers, "cf-mitigated")?.trim().toLowerCase() === "challenge") {
-    return true;
-  }
-  if (!CHALLENGE_STATUSES.has(response.status)) return false;
-  if (data.byteLength > MAX_CHALLENGE_INSPECTION_BYTES) return false;
+  try {
+    if (!(data instanceof ArrayBuffer)) return false;
+    if (headerValue(response.headers, "cf-mitigated")?.trim().toLowerCase() === "challenge") {
+      return true;
+    }
+    const status = responseStatus(response);
+    if (status === undefined || !CHALLENGE_STATUSES.has(status)) return false;
+    if (data.byteLength > MAX_CHALLENGE_INSPECTION_BYTES) return false;
 
-  const body = decodeResponseBody(data);
-  const contentType = headerValue(response.headers, "content-type") ?? "";
-  const isHtml = HTML_CONTENT_TYPE.test(contentType) || HTML_TAG.test(body);
-  return isHtml && CHALLENGE_MARKERS.some((marker) => marker.test(body));
+    const body = decodeResponseBody(data);
+    const contentType = headerValue(response.headers, "content-type") ?? "";
+    const isHtml = HTML_CONTENT_TYPE.test(contentType) || HTML_TAG.test(body);
+    return isHtml && CHALLENGE_MARKERS.some((marker) => marker.test(body));
+  } catch {
+    return false;
+  }
 };
 
 export interface SourceRequestInterceptorOptions {
@@ -328,23 +432,27 @@ export class SourceRequestInterceptor extends PaperbackInterceptor {
     proposedRequest: Request,
     redirectedResponse: Response,
   ): Promise<Request | undefined> {
-    const responseIsFirstParty = this.options.isFirstPartyUrl(redirectedResponse.url);
-    if (responseIsFirstParty) {
-      return this.options.isFirstPartyUrl(proposedRequest.url) ? proposedRequest : undefined;
-    }
+    try {
+      const responseIsFirstParty = this.options.isFirstPartyUrl(redirectedResponse.url);
+      if (responseIsFirstParty) {
+        return this.options.isFirstPartyUrl(proposedRequest.url) ? proposedRequest : undefined;
+      }
 
-    // Image/CDN URLs are intentionally neutral. They may redirect across CDN hosts, but
-    // must stay encrypted and can never carry source or caller credentials. Only bodyless
-    // navigation methods are allowed so a neutral cross-host redirect cannot replay a POST.
-    return isSafeNeutralRedirectMethod(proposedRequest.method) &&
-      isSafeHttpsUrl(redirectedResponse.url) &&
-      isSafeHttpsUrl(proposedRequest.url)
-      ? sanitizeNeutralRedirect(proposedRequest)
-      : undefined;
+      // Image/CDN URLs are intentionally neutral. They may redirect across CDN hosts, but
+      // must stay encrypted and can never carry source or caller credentials. Only bodyless
+      // navigation methods are allowed so a neutral cross-host redirect cannot replay a POST.
+      return isSafeNeutralRedirectMethod(proposedRequest.method) &&
+        isSafeHttpsUrl(redirectedResponse.url) &&
+        isSafeHttpsUrl(proposedRequest.url)
+        ? sanitizeNeutralRedirect(proposedRequest)
+        : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   override async interceptRequest(request: Request): Promise<Request> {
-    const headers = { ...request.headers };
+    const headers = cloneStringHeaders(request.headers);
     const isFirstParty = this.options.isFirstPartyUrl(request.url);
 
     if (isFirstParty) {

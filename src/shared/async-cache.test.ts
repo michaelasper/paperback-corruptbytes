@@ -73,6 +73,21 @@ describe("AsyncKeyedCache", () => {
     assert.equal(calls, 4);
   });
 
+  it("recovers deterministically when aggregate weight arithmetic overflows", async () => {
+    let calls = 0;
+    const cache = new AsyncKeyedCache<string, string>({
+      ttlMs: 1_000,
+      maxEntries: 2,
+      maxWeight: Number.MAX_VALUE,
+      weigh: () => Number.MAX_VALUE,
+    });
+
+    assert.equal(await cache.get("a", async () => `a-${++calls}`), "a-1");
+    assert.equal(await cache.get("b", async () => `b-${++calls}`), "b-2");
+    assert.equal(await cache.get("b", async () => `unexpected-${++calls}`), "b-2");
+    assert.equal(await cache.get("a", async () => `a-${++calls}`), "a-3");
+  });
+
   it("returns oversized values to the caller without retaining them", async () => {
     let calls = 0;
     const cache = new AsyncKeyedCache<string, string>({
@@ -131,6 +146,14 @@ describe("AsyncKeyedCache", () => {
     assert.throws(
       () => new AsyncKeyedCache<string, string>({ ttlMs: 1_000, maxEntries: 1, maxWeight: -1 }),
       /maxWeight must be a non-negative finite number/,
+    );
+    assert.throws(
+      () =>
+        new AsyncKeyedCache<string, string>({
+          ttlMs: 1_000,
+          maxEntries: Number.MAX_SAFE_INTEGER + 1,
+        }),
+      /maxEntries must be a positive integer/,
     );
     assert.throws(
       () => new AsyncKeyedCache<string, string>({ ttlMs: 1_000, maxEntries: 1, maxWeight: 1 }),
@@ -215,6 +238,27 @@ describe("AsyncKeyedCache", () => {
     assert.equal(await cache.get("key", async () => `value-${++loads}`), "value-2");
   });
 
+  it("treats a throwing or nonfinite clock during a cache hit as a miss", async () => {
+    let clockCalls = 0;
+    let loads = 0;
+    const cache = new AsyncKeyedCache<string, string>({
+      ttlMs: 50,
+      maxEntries: 1,
+      now: () => {
+        clockCalls += 1;
+        if (clockCalls === 2) throw new Error("clock failed during lookup");
+        if (clockCalls === 4) return Number.NaN;
+        return clockCalls;
+      },
+    });
+
+    assert.equal(await cache.get("key", async () => `value-${++loads}`), "value-1");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(await cache.get("key", async () => `value-${++loads}`), "value-2");
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(await cache.get("key", async () => `value-${++loads}`), "value-3");
+  });
+
   it("never caches failures and supports explicit invalidation", async () => {
     const cache = new AsyncKeyedCache<string, string>({ ttlMs: 1_000, maxEntries: 2 });
     let calls = 0;
@@ -229,6 +273,20 @@ describe("AsyncKeyedCache", () => {
     assert.equal(await cache.get("key", async () => `value-${++calls}`), "value-2");
     cache.delete("key");
     assert.equal(await cache.get("key", async () => `value-${++calls}`), "value-3");
+  });
+
+  it("enforces bounds when undefined is a valid cache key", async () => {
+    const cache = new AsyncKeyedCache<string | undefined, string>({
+      ttlMs: 1_000,
+      maxEntries: 1,
+    });
+    let calls = 0;
+    assert.equal(await cache.get(undefined, async () => `undefined-${++calls}`), "undefined-1");
+    assert.equal(
+      await cache.get("replacement", async () => `replacement-${++calls}`),
+      "replacement-2",
+    );
+    assert.equal(await cache.get(undefined, async () => `undefined-${++calls}`), "undefined-3");
   });
 
   it("evicts least-recently-used entries at the configured bound", async () => {

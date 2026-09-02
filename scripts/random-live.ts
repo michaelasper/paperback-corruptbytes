@@ -14,6 +14,7 @@ import { DIVA_SCANS_SITE } from "../src/DivaScans/site.js";
 import { MadaraDexClient } from "../src/MadaraDex/client.js";
 import { MgekoClient } from "../src/Mgeko/client.js";
 import { QiMangaClient } from "../src/QiManga/client.js";
+import { isNeutralMediaUrl as isQiMangaMediaUrl } from "../src/QiManga/network.js";
 import { NovelDashClient } from "../src/shared/noveldash-client.js";
 import type { NovelDashSite } from "../src/shared/noveldash-models.js";
 import { ThunderClient } from "../src/Thunderscans/client.js";
@@ -39,7 +40,7 @@ import {
 
 const USER_AGENT = "Mozilla/5.0 PaperbackExtensionRandomLive/1.0";
 const REQUEST_TIMEOUT_MS = 30_000;
-const RETRYABLE_HTTP_STATUSES = new Set([429, 502, 503, 504]);
+const RETRYABLE_HTTP_STATUSES = new Set([429, 502, 503, 504, 520, 521, 522, 523, 524]);
 const DEFAULT_SAMPLES_PER_SOURCE = 3;
 const MAX_SAMPLES_PER_SOURCE = 8;
 const DEFAULT_SOURCE_CONCURRENCY = 3;
@@ -232,6 +233,7 @@ const probeSeries = async (
   load: (mangaId: string) => Promise<{ chapters: Chapter[]; manga: SourceManga }>,
   read: (chapter: Chapter) => Promise<ChapterDetails>,
   readable: (chapter: Chapter) => boolean = () => true,
+  validateSourceReader?: (chapter: Chapter, details: ChapterDetails) => void,
 ): Promise<ProbeStats> => {
   assert.ok(items.length > 0, `${source} returned an empty randomized catalog sample.`);
   const selected = random.sampleUnique(items, items.length, (item) => item.mangaId);
@@ -270,7 +272,9 @@ const probeSeries = async (
     if (candidates.length === 0) continue;
     const chapter = random.pick(candidates);
     try {
-      validateReader(chapter, await read(chapter));
+      const details = await read(chapter);
+      validateReader(chapter, details);
+      validateSourceReader?.(chapter, details);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
@@ -435,6 +439,13 @@ const probeQiManga = async (random: DeterministicRandom): Promise<ProbeStats> =>
     },
     (chapter) => client.getChapterDetails(chapter),
     (chapter) => chapter.additionalInfo?.locked !== "true",
+    (chapter, details) => {
+      if (!("pages" in details)) return;
+      assert.ok(
+        details.pages.every(isQiMangaMediaUrl),
+        `${chapter.chapterId} returned a page from outside Qi Manga's media allowlist.`,
+      );
+    },
   );
 };
 

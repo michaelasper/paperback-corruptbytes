@@ -85,7 +85,7 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 ### Qi Manga
 
 - Featured, popular, pinned, latest, editor-selected, newly added, and complete genre discovery from Qi Manga's structured API.
-- Live genre, status, format, and sorting filters, dedicated title search, and pasted series URL resolution. Qi Manga's upstream title-search endpoint does not combine those browse filters.
+- Live genre, format, sorting, and frontend-supported status filters (Ongoing, Completed, Hiatus, and Dropped), plus dedicated title search and pasted series URL resolution. Qi Manga's upstream title-search endpoint does not combine those browse filters.
 - Punctuation-safe series and chapter IDs, verified complete chapter pagination, ordered comic pages, and sanitized novel HTML.
 - First-party Qi Manga sign-in for chapters the account already owns; unavailable chapters retain explicit lock and coin-price labels.
 

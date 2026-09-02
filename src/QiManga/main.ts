@@ -24,12 +24,14 @@ import {
   fetchQiMangaAccountStatus,
   fetchQiMangaTextWithSessionRefresh,
   persistQiMangaCookies,
+  qiMangaCloudflareCookieSnapshots,
   type QiMangaCookieStore,
 } from "./auth.js";
 import { QiMangaClient } from "./client.js";
 import { QiMangaCookieInterceptor } from "./cookies.js";
 import { QiMangaInterceptor } from "./interceptor.js";
 import type { QiMangaCard, QiMangaPageMetadata, QiMangaSearchMetadata } from "./models.js";
+import { hasTitleSearchQuery } from "./network.js";
 import type { QiMangaHome, QiMangaSeriesPage } from "./parsers.js";
 import type QiMangaConfig from "./pbconfig.js";
 import { QiMangaAdvancedSearchForm } from "./search.js";
@@ -71,6 +73,9 @@ export const SORTING_OPTIONS: SortingOption[] = [
   { id: "popular", label: "Popular" },
   { id: "alphabetical", label: "Title: A–Z" },
 ];
+
+const hasTitleQuery = (query: SearchQuery<QiMangaSearchMetadata>): boolean =>
+  hasTitleSearchQuery(query.title);
 
 const displayLabel = (value: string | undefined): string | undefined => {
   const words = value
@@ -151,7 +156,10 @@ export class QiMangaExtension implements ExtensionImpl<typeof QiMangaConfig> {
   constructor(client?: QiMangaClientContract) {
     this.client =
       client ??
-      new QiMangaClient((request) => fetchQiMangaTextWithSessionRefresh(this.cookies, request));
+      new QiMangaClient(
+        (request) => fetchQiMangaTextWithSessionRefresh(this.cookies, request),
+        () => this.cookies.authIdentityGeneration,
+      );
   }
 
   async initialise(): Promise<void> {
@@ -162,10 +170,12 @@ export class QiMangaExtension implements ExtensionImpl<typeof QiMangaConfig> {
 
   async getSettingsForm(): Promise<Form> {
     const account = await fetchQiMangaAccountStatus(this.cookies);
+    this.cookies.markAuthenticationChanged();
     this.client.invalidateAccountCaches();
-    return new QiMangaSettingsForm(this.cookies, account, () =>
-      this.client.invalidateAccountCaches(),
-    );
+    return new QiMangaSettingsForm(this.cookies, account, () => {
+      this.cookies.markAuthenticationChanged();
+      this.client.invalidateAccountCaches();
+    });
   }
 
   async cloudflareBypassCompleted(
@@ -173,7 +183,9 @@ export class QiMangaExtension implements ExtensionImpl<typeof QiMangaConfig> {
     cookies: Cookie[],
     _localStorage: Record<string, string>,
   ): Promise<void> {
-    persistQiMangaCookies(this.cookies, cookies);
+    // The Cloudflare WebView is not an authentication flow. Import only documented
+    // challenge cookies; account cookies must pass the dedicated login verification.
+    persistQiMangaCookies(this.cookies, qiMangaCloudflareCookieSnapshots(cookies));
     this.client.invalidateCaches();
   }
 
@@ -238,14 +250,17 @@ export class QiMangaExtension implements ExtensionImpl<typeof QiMangaConfig> {
     return selected ? { items: sectionItems(selected[0], selected[1]) } : { items: [] };
   }
 
-  async getSortingOptions(_query: SearchQuery<QiMangaSearchMetadata>): Promise<SortingOption[]> {
-    return SORTING_OPTIONS.map((option) => ({ ...option }));
+  async getSortingOptions(query: SearchQuery<QiMangaSearchMetadata>): Promise<SortingOption[]> {
+    return hasTitleQuery(query) ? [] : SORTING_OPTIONS.map((option) => ({ ...option }));
   }
 
   async getAdvancedSearchForm(
     query: SearchQuery<QiMangaSearchMetadata>,
   ): Promise<AdvancedSearchForm> {
-    return new QiMangaAdvancedSearchForm(query, await this.client.getGenres());
+    return new QiMangaAdvancedSearchForm(
+      query,
+      hasTitleQuery(query) ? [] : await this.client.getGenres(),
+    );
   }
 
   async getSearchResults(
@@ -253,7 +268,9 @@ export class QiMangaExtension implements ExtensionImpl<typeof QiMangaConfig> {
     metadata: QiMangaPageMetadata | undefined,
     sortingOption?: SortingOption,
   ): Promise<PagedResults<SearchResultItem>> {
-    const pasted = await this.client.resolvePastedUrl(query.title ?? "");
+    const pasted = await this.client.resolvePastedUrl(
+      typeof query.title === "string" ? query.title : "",
+    );
     if (pasted) return pasted;
     const page = await this.client.getSearchPage(query, sortingOption, metadata?.page ?? 1);
     return { items: searchItems(page), metadata: nextPage(page) };

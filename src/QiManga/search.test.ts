@@ -47,6 +47,11 @@ describe("Qi Manga advanced search", () => {
     await form.handleGenreChange(["adventure-589", "action"]);
     await form.handleStatusChange(["HIATUS", "DROPPED"]);
     await form.handleTypeChange(["NOVEL", "MANGA"]);
+    assert.deepEqual(form.getSearchQueryMetadata(), {});
+
+    await form.handleGenreChange(["adventure-589"]);
+    await form.handleStatusChange(["HIATUS"]);
+    await form.handleTypeChange(["NOVEL"]);
     assert.deepEqual(form.getSearchQueryMetadata(), {
       genre: "adventure-589",
       status: "HIATUS",
@@ -57,6 +62,27 @@ describe("Qi Manga advanced search", () => {
     await form.handleStatusChange(["INVALID"]);
     await form.handleTypeChange(["AUDIOBOOK"]);
     assert.deepEqual(form.getSearchQueryMetadata(), {});
+
+    const throwingSelection = new Proxy(["ONGOING"], {
+      get: (target, property, receiver) => {
+        if (property === "0") throw new Error("malformed selection member");
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    await assert.doesNotReject(form.handleStatusChange(throwingSelection));
+    assert.deepEqual(form.getSearchQueryMetadata(), {});
+  });
+
+  it("hides unsupported controls and metadata during title search", () => {
+    const form = new QiMangaAdvancedSearchForm(
+      { title: "demon", metadata: { genre: "action", status: "ONGOING", type: "MANHWA" } },
+      genres,
+    );
+    assert.deepEqual(form.getSearchQueryMetadata(), {});
+    const sections = form.getSections();
+    assert.equal(sections.length, 1);
+    assert.deepEqual(sections[0]?.items, []);
+    assert.match(sections[0]?.footer ?? "", /cannot combine/i);
   });
 
   it("isolates live taxonomy and row state from caller mutation", () => {
@@ -80,10 +106,10 @@ describe("Qi Manga advanced search", () => {
     assert.deepEqual(isolatedParams.value, ["action"]);
   });
 
-  it("matches every live status and format enum", () => {
+  it("matches every status and format exposed by Qi Manga's public filter UI", () => {
     assert.deepEqual(
       STATUS_OPTIONS.map((item) => item.id),
-      ["ONGOING", "COMPLETED", "HIATUS", "DROPPED", "CANCELLED"],
+      ["ONGOING", "COMPLETED", "HIATUS", "DROPPED"],
     );
     assert.deepEqual(
       TYPE_OPTIONS.map((item) => item.id),

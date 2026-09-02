@@ -5,6 +5,7 @@ import { ContentRating, type SourceManga } from "@paperback/types";
 
 import { seriesSlugToId } from "./network.js";
 import {
+  AUTH_REQUIRED_ERROR,
   FALLBACK_COVER_URL,
   LOCKED_ERROR,
   finalizeChapters,
@@ -56,32 +57,32 @@ describe("Qi Manga series parsers", () => {
     assert.equal(cards[0]?.mangaId, "the-supreme-demon-swordmaster");
     assert.equal(cards[0]?.rating, 0.82);
     assert.equal(cards[0]?.type, "MANHWA");
+    assert.equal(cards[0]?.status, "ONGOING");
     assert.equal(cards[0]?.contentRating, ContentRating.ADULT);
+    assert.equal(
+      parseSeriesCards([{ ...HOME_RESPONSE.banners[0], status: " ongoing " }])[0]?.status,
+      undefined,
+    );
     assert.deepEqual(
       parseSeriesCards([{ ...HOME_RESPONSE.banners[0], redirectUrl: "x".repeat(2_049) }]),
       [],
     );
-  });
-
-  it("never normalizes opaque series or genre identifiers", () => {
     assert.deepEqual(
-      parseSeriesCards([{ ...HOME_RESPONSE.banners[0], slug: " the-supreme-demon-swordmaster " }]),
+      parseSeriesCards([{ ...HOME_RESPONSE.banners[0], redirectUrl: " ".repeat(2_049) }]),
       [],
     );
-    assert.throws(
-      () =>
-        parseMangaDetails(
-          { ...SERIES_DETAIL, slug: " the-supreme-demon-swordmaster " },
-          seriesSlugToId("the-supreme-demon-swordmaster"),
-        ),
-      /invalid series detail/i,
+    assert.deepEqual(parseSeriesCards([{ ...HOME_RESPONSE.banners[0], redirectUrl: " " }]), []);
+    assert.deepEqual(
+      parseSeriesCards([{ ...HOME_RESPONSE.banners[0], title: "Unsafe\ud800title" }]),
+      [],
+    );
+    assert.equal(
+      parseSeriesCards([{ ...HOME_RESPONSE.banners[0], title: "Safe 😀 title" }])[0]?.title,
+      "Safe 😀 title",
     );
     assert.deepEqual(
-      parseGenres([
-        { slug: " action ", name: "Action" },
-        { slug: "action", name: "Action" },
-      ]),
-      [{ id: "action", title: "Action" }],
+      parseSeriesCards([{ ...HOME_RESPONSE.banners[0], slug: " padded-series " }]),
+      [],
     );
   });
 
@@ -127,11 +128,37 @@ describe("Qi Manga series parsers", () => {
       /invalid paginated series/i,
     );
     assert.throws(
+      () => parseSeriesPage({ data: [], current: 1, totalPages: 1, totalItems: "0" }),
+      /invalid paginated series/i,
+    );
+    assert.throws(
+      () => parseSeriesPage({ data: [], current: 1, totalPages: 1 }),
+      /invalid paginated series/i,
+    );
+    assert.throws(
       () => parseSeriesPage({ data: [], current: 2, totalPages: 1, totalItems: 0 }),
       /invalid paginated series/i,
     );
     assert.throws(
       () => parseSeriesPage({ data: [HOME_RESPONSE.banners[0]], current: 1, totalPages: 0 }),
+      /invalid paginated series/i,
+    );
+    assert.throws(
+      () => parseSeriesPage({ data: [], current: 1, totalPages: 10_001, totalItems: 0 }),
+      /invalid paginated series/i,
+    );
+    assert.throws(
+      () =>
+        parseSeriesPage({
+          data: Array.from({ length: 101 }, () => HOME_RESPONSE.banners[0]),
+          current: 1,
+          totalPages: 1,
+          totalItems: 101,
+        }),
+      /invalid series list/i,
+    );
+    assert.throws(
+      () => parseSeriesPage({ data: [], current: 1, totalPages: 1, totalItems: 1_000_001 }),
       /invalid paginated series/i,
     );
   });
@@ -151,12 +178,37 @@ describe("Qi Manga series parsers", () => {
       "마검지존",
     ]);
     assert.equal(manga.mangaInfo.contentType, "comic");
+    assert.equal(manga.mangaInfo.status, "Ongoing");
+    assert.equal(
+      parseMangaDetails(
+        { ...SERIES_DETAIL, status: " ongoing " },
+        seriesSlugToId(SERIES_DETAIL.slug),
+      ).mangaInfo.status,
+      undefined,
+    );
     assert.equal(manga.mangaInfo.contentRating, ContentRating.MATURE);
     assert.equal(manga.mangaInfo.rating, 0.9);
     assert.equal(manga.mangaInfo.author, "A. Writer");
     assert.equal(manga.mangaInfo.artist, "B. Artist");
     assert.doesNotMatch(manga.mangaInfo.synopsis, /script|steal/i);
     assert.match(manga.mangaInfo.synopsis, /returns & takes control/);
+    assert.equal(
+      parseMangaDetails(
+        { ...SERIES_DETAIL, description: "unsafe\ud800description" },
+        seriesSlugToId(SERIES_DETAIL.slug),
+      ).mangaInfo.synopsis,
+      "",
+    );
+    assert.deepEqual(
+      parseMangaDetails(
+        {
+          ...SERIES_DETAIL,
+          alternativeTitles: `The Supreme Demon Swordmaster\nLine Alias\n${"x".repeat(1_025)};Final Alias`,
+        },
+        seriesSlugToId(SERIES_DETAIL.slug),
+      ).mangaInfo.secondaryTitles,
+      ["Line Alias", "Final Alias"],
+    );
     assert.deepEqual(
       manga.mangaInfo.tagGroups?.[0]?.tags.map((genre) => genre.id),
       ["action", "ecchi"],
@@ -178,10 +230,33 @@ describe("Qi Manga series parsers", () => {
 
   it("rejects detail responses for a different source ID or an external redirect", () => {
     assert.throws(() => parseMangaDetails(SERIES_DETAIL, "different-series"), /different series/i);
-    for (const redirectUrl of ["https://example.com/title", "x".repeat(2_049)]) {
+    assert.throws(
+      () =>
+        parseMangaDetails(
+          { ...SERIES_DETAIL, slug: ` ${SERIES_DETAIL.slug}` },
+          seriesSlugToId(SERIES_DETAIL.slug),
+        ),
+      /invalid series detail/i,
+    );
+    for (const redirectUrl of [
+      "https://example.com/title",
+      " ",
+      "x".repeat(2_049),
+      " ".repeat(2_049),
+    ]) {
       assert.throws(
         () => parseMangaDetails({ ...SERIES_DETAIL, redirectUrl }, "the-supreme-demon-swordmaster"),
         /redirects to another website/i,
+      );
+    }
+    for (const chapterCount of [10_001, -1, 1.5, Number.NaN, "12"]) {
+      assert.throws(
+        () =>
+          parseMangaDetails(
+            { ...SERIES_DETAIL, stats: { ...SERIES_DETAIL.stats, chapterCount } },
+            seriesSlugToId(SERIES_DETAIL.slug),
+          ),
+        /invalid series detail/i,
       );
     }
   });
@@ -231,52 +306,54 @@ describe("Qi Manga chapter parsers", () => {
     assert.equal(page.chapters.length, 1);
     assert.equal(page.chapters[0]?.additionalInfo?.locked, "false");
     assert.equal(page.chapters[0]?.title, "A side story");
-  });
 
-  it("does not coerce numeric strings from untrusted chapter payloads", () => {
-    const page = parseChapterPage(
+    const malformedAuthentication = parseChapterPage(
       {
         ...CHAPTER_PAGE_ONE,
-        data: [{ ...CHAPTER_PAGE_ONE.data[0], number: "1" }],
+        data: [{ ...paid, requiresPurchase: false, requiresAuth: "false" }],
         totalItems: 1,
         totalPages: 1,
       },
       comicManga,
-      true,
+      false,
     );
-    assert.deepEqual(page.chapters, []);
+    assert.deepEqual(malformedAuthentication.chapters, []);
   });
 
-  it("never normalizes opaque chapter or owning-series identifiers", () => {
-    const page = parseChapterPage(
-      {
-        ...CHAPTER_PAGE_ONE,
-        data: [{ ...CHAPTER_PAGE_ONE.data[0], slug: " chapter-1 " }],
-        totalItems: 1,
-        totalPages: 1,
-      },
-      comicManga,
-      true,
-    );
-    assert.deepEqual(page.chapters, []);
+  it("rejects malformed structural chapter data instead of silently truncating it", () => {
+    for (const malformed of [
+      { ...CHAPTER_PAGE_ONE.data[0], number: "1" },
+      { ...CHAPTER_PAGE_ONE.data[0], slug: "unsafe-number", number: 2 ** 53 },
+      { ...CHAPTER_PAGE_ONE.data[0], slug: " padded-chapter " },
+      { ...CHAPTER_PAGE_ONE.data[0], number: 10_000_001 },
+    ]) {
+      assert.throws(
+        () =>
+          parseChapterPage(
+            {
+              ...CHAPTER_PAGE_ONE,
+              data: [malformed],
+              totalItems: 1,
+              totalPages: 1,
+            },
+            comicManga,
+            true,
+          ),
+        /invalid chapter entry/i,
+      );
+    }
     assert.throws(
       () =>
-        parseChapterDetails(
-          { ...COMIC_CHAPTER_RESPONSE, slug: " chapter-3 " },
-          chapterFor(comicManga, "chapter-3", 3),
+        parseChapterPage(
+          { ...CHAPTER_PAGE_ONE, data: [], totalItems: "0", totalPages: 1 },
+          comicManga,
+          true,
         ),
-      /different chapter/i,
+      /invalid paginated chapter/i,
     );
     assert.throws(
-      () =>
-        parseChapterDetails(
-          {
-            ...COMIC_CHAPTER_RESPONSE,
-            series: { slug: " the-supreme-demon-swordmaster " },
-          },
-          chapterFor(comicManga, "chapter-3", 3),
-        ),
-      /different series/i,
+      () => parseChapterPage({ data: [], current: 1, totalPages: 1 }, comicManga, true),
+      /invalid paginated chapter/i,
     );
   });
 
@@ -294,6 +371,10 @@ describe("Qi Manga chapter parsers", () => {
     assert.deepEqual(
       chapters.map((chapter) => chapter.sortingIndex),
       [0, 1],
+    );
+    assert.throws(
+      () => finalizeChapters([page.chapters[0]!, { ...page.chapters[0]!, chapNum: 99 }]),
+      /conflicting rows for the same chapter/i,
     );
   });
 
@@ -321,7 +402,22 @@ describe("Qi Manga chapter parsers", () => {
     assert.match(details.html, /First &amp; safe/);
     assert.match(details.html, /Second/);
     assert.match(details.html, /https:\/\/media\.qiscans\.org\/illustration\.webp/);
-    assert.doesNotMatch(details.html, /script|onclick|javascript:|tracker\.example/i);
+    assert.match(details.html, /href="#note"/);
+    assert.doesNotMatch(details.html, /script|onclick|javascript:|tracker\.example|evil\.example/i);
+    for (const content of [
+      "<p>unsafe\ud800content</p>",
+      "<p>unsafe\uffffcontent</p>",
+      "<p>unsafe\u{1fffe}content</p>",
+    ]) {
+      assert.throws(
+        () =>
+          parseChapterDetails(
+            { ...NOVEL_CHAPTER_RESPONSE, content },
+            chapterFor(novelManga, "chapter-32", 32),
+          ),
+        /no readable pages or novel text/i,
+      );
+    }
   });
 
   it("accepts explicit account grants for paid chapters but fails closed on ambiguous access", () => {
@@ -338,6 +434,22 @@ describe("Qi Manga chapter parsers", () => {
         ),
       new RegExp(LOCKED_ERROR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
+    assert.throws(
+      () =>
+        parseChapterDetails(
+          { ...COMIC_CHAPTER_RESPONSE, requiresPurchase: false, requiresAuth: "false" },
+          chapterFor(comicManga, "chapter-3", 3),
+        ),
+      new RegExp(LOCKED_ERROR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
+    assert.throws(
+      () =>
+        parseChapterDetails(
+          { ...COMIC_CHAPTER_RESPONSE, requiresPurchase: false, requiresAuth: true },
+          chapterFor(comicManga, "chapter-3", 3),
+        ),
+      new RegExp(AUTH_REQUIRED_ERROR.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+    );
   });
 
   it("reports locks and response-ID mismatches explicitly", () => {
@@ -349,6 +461,22 @@ describe("Qi Manga chapter parsers", () => {
       () =>
         parseChapterDetails(
           { ...COMIC_CHAPTER_RESPONSE, slug: "chapter-999" },
+          chapterFor(comicManga, "chapter-3", 3),
+        ),
+      /different chapter/i,
+    );
+    assert.throws(
+      () =>
+        parseChapterDetails(
+          { ...COMIC_CHAPTER_RESPONSE, slug: " chapter-3 " },
+          chapterFor(comicManga, "chapter-3", 3),
+        ),
+      /different chapter/i,
+    );
+    assert.throws(
+      () =>
+        parseChapterDetails(
+          { ...COMIC_CHAPTER_RESPONSE, number: 4 },
           chapterFor(comicManga, "chapter-3", 3),
         ),
       /different chapter/i,
@@ -370,6 +498,7 @@ describe("Qi Manga chapter parsers", () => {
           {
             slug: "chapter-3",
             series: { slug: "the-supreme-demon-swordmaster" },
+            number: 3,
             isFree: true,
             requiresPurchase: false,
             images: [],
@@ -389,19 +518,61 @@ describe("Qi Manga chapter parsers", () => {
         ),
       /no readable pages/i,
     );
+    for (const images of [
+      [
+        {
+          url: "https://media.qimanga.com/pages/huge-order.webp",
+          order: 1_000_001,
+        },
+      ],
+      [{ url: "https://media.qimanga.com/pages/missing-order.webp" }],
+    ]) {
+      assert.throws(
+        () =>
+          parseChapterDetails(
+            {
+              ...COMIC_CHAPTER_RESPONSE,
+              images,
+            },
+            chapterFor(comicManga, "chapter-3", 3),
+          ),
+        /invalid chapter image entry/i,
+      );
+    }
+    assert.throws(
+      () =>
+        parseChapterDetails(
+          {
+            ...COMIC_CHAPTER_RESPONSE,
+            images: [
+              COMIC_CHAPTER_RESPONSE.images[0],
+              { url: "https://tracker.example/private.webp", order: 2 },
+            ],
+          },
+          chapterFor(comicManga, "chapter-3", 3),
+        ),
+      /invalid chapter image entry/i,
+    );
     assert.throws(
       () => parseChapterPage({ ...CHAPTER_PAGE_ONE, data: Array(101).fill({}) }, comicManga, true),
       /invalid chapter list/i,
+    );
+    assert.throws(
+      () => finalizeChapters(Array(10_001).fill(CHAPTER_PAGE_ONE.data[0] as never)),
+      /too many chapters/i,
     );
   });
 });
 
 describe("Qi Manga taxonomy parser", () => {
   it("sorts and deduplicates live genre slugs", () => {
-    assert.deepEqual(parseGenres(GENRES_RESPONSE), [
-      { id: "action", title: "Action" },
-      { id: "adventure-589", title: "Adventure" },
-      { id: "ecchi", title: "Ecchi" },
-    ]);
+    assert.deepEqual(
+      parseGenres([...GENRES_RESPONSE, { slug: " padded-genre ", name: "Padded" }]),
+      [
+        { id: "action", title: "Action" },
+        { id: "adventure-589", title: "Adventure" },
+        { id: "ecchi", title: "Ecchi" },
+      ],
+    );
   });
 });

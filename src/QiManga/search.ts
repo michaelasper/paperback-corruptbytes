@@ -7,13 +7,15 @@ import {
 } from "@paperback/types";
 
 import type { QiMangaSearchMetadata } from "./models.js";
+import { hasTitleSearchQuery } from "./network.js";
 
+// Match the public Qi Manga filter control exactly. Backend-only values such as
+// CANCELLED and MASS_RELEASED remain displayable but are not user-selectable.
 export const STATUS_OPTIONS: Tag[] = [
   { id: "ONGOING", title: "Ongoing" },
   { id: "COMPLETED", title: "Completed" },
   { id: "HIATUS", title: "Hiatus" },
   { id: "DROPPED", title: "Dropped" },
-  { id: "CANCELLED", title: "Cancelled" },
 ];
 
 export const TYPE_OPTIONS: Tag[] = [
@@ -23,11 +25,22 @@ export const TYPE_OPTIONS: Tag[] = [
   { id: "NOVEL", title: "Novel" },
 ];
 
-const selected = (value: string | undefined, options: readonly Tag[]): string[] =>
-  value && options.some((option) => option.id === value) ? [value] : [];
+const selected = (value: unknown, options: readonly Tag[]): string[] =>
+  typeof value === "string" && value.length <= 256 && options.some((option) => option.id === value)
+    ? [value]
+    : [];
+
+const selectedFromChange = (value: unknown, options: readonly Tag[]): string[] => {
+  try {
+    return Array.isArray(value) && value.length === 1 ? selected(value[0], options) : [];
+  } catch {
+    return [];
+  }
+};
 
 export class QiMangaAdvancedSearchForm extends AdvancedSearchForm {
   private readonly genreOptions: Tag[];
+  private readonly titleSearch: boolean;
   private genre: string[];
   private status: string[];
   private type: string[];
@@ -35,6 +48,7 @@ export class QiMangaAdvancedSearchForm extends AdvancedSearchForm {
   constructor(query: SearchQuery<QiMangaSearchMetadata>, genreOptions: Tag[]) {
     super();
     this.genreOptions = genreOptions.map((option) => ({ ...option }));
+    this.titleSearch = hasTitleSearchQuery(query.title);
     const metadata = query.metadata ?? {};
     this.genre = selected(metadata.genre, this.genreOptions);
     this.status = selected(metadata.status, STATUS_OPTIONS);
@@ -42,6 +56,19 @@ export class QiMangaAdvancedSearchForm extends AdvancedSearchForm {
   }
 
   override getSections() {
+    if (this.titleSearch) {
+      return [
+        Section(
+          {
+            id: "title-search",
+            footer:
+              "Qi Manga's title-search endpoint cannot combine genre, status, format, or sorting. Clear the title to browse with those controls.",
+          },
+          [],
+        ),
+      ];
+    }
+
     return [
       Section(
         {
@@ -95,18 +122,19 @@ export class QiMangaAdvancedSearchForm extends AdvancedSearchForm {
   }
 
   async handleGenreChange(value: string[]): Promise<void> {
-    this.genre = selected(value[0], this.genreOptions);
+    this.genre = selectedFromChange(value, this.genreOptions);
   }
 
   async handleStatusChange(value: string[]): Promise<void> {
-    this.status = selected(value[0], STATUS_OPTIONS);
+    this.status = selectedFromChange(value, STATUS_OPTIONS);
   }
 
   async handleTypeChange(value: string[]): Promise<void> {
-    this.type = selected(value[0], TYPE_OPTIONS);
+    this.type = selectedFromChange(value, TYPE_OPTIONS);
   }
 
   override getSearchQueryMetadata(): QiMangaSearchMetadata {
+    if (this.titleSearch) return {};
     return {
       ...(this.genre[0] && { genre: this.genre[0] }),
       ...(this.status[0] && { status: this.status[0] }),

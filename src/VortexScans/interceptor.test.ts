@@ -89,7 +89,7 @@ describe("VortexInterceptor request headers", () => {
     }
     assert.equal(intercepted.headers?.accept, undefined);
     assert.equal(intercepted.headers?.["user-agent"], "Paperback Test/0.9");
-    assert.deepEqual(intercepted.cookies, {});
+    assert.equal("cookies" in intercepted, false);
   });
 
   it("recognizes first-party requests when Paperback provides no browser URL global", async () => {

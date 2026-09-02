@@ -159,14 +159,10 @@ describe("MadaraDex response handling", () => {
     assert.equal(decodeCalls, 0);
   });
 
-  it("classifies oversized ordinary HTTP failures before enforcing the body limit", async () => {
+  it("enforces the body limit before classifying ordinary HTTP failures", async () => {
     let decodeCalls = 0;
 
-    for (const [status, message] of [
-      [401, /status 401/i],
-      [404, /content not found/i],
-      [500, /status 500/i],
-    ] as const) {
+    for (const status of [401, 404, 500]) {
       installApplication(status, "x".repeat(DEFAULT_MAX_RESPONSE_BYTES + 1));
       Object.assign(globalThis.Application, {
         arrayBufferToUTF8String: () => {
@@ -176,7 +172,7 @@ describe("MadaraDex response handling", () => {
       });
       await assert.rejects(
         fetchText({ url: "https://madaradex.org/private", method: "GET" }),
-        message,
+        /too large|body limit/i,
       );
     }
 

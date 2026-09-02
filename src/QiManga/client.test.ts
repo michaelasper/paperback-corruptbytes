@@ -177,6 +177,9 @@ describe("Qi Manga client chapters", () => {
     const manga = await client.getMangaDetails(seriesSlugToId(SERIES_DETAIL.slug));
     const all = await client.getChapters(manga, { showLocked: true });
     const free = await client.getChapters(manga, { showLocked: false });
+    const malformed = await client.getChapters(manga, {
+      showLocked: "false" as unknown as boolean,
+    });
 
     assert.deepEqual(
       all.map((chapter) => chapter.chapNum),
@@ -185,6 +188,10 @@ describe("Qi Manga client chapters", () => {
     assert.deepEqual(
       free.map((chapter) => chapter.chapNum),
       [1, 3],
+    );
+    assert.deepEqual(
+      malformed.map((chapter) => chapter.chapNum),
+      [1, 2.5, 3, 4],
     );
     assert.equal(requests.filter((request) => /\/chapters\?/.test(request.url)).length, 2);
 
@@ -204,6 +211,34 @@ describe("Qi Manga client chapters", () => {
       chapters.map((chapter) => chapter.chapNum),
       [3, 4],
     );
+
+    class MisleadingDate extends Date {
+      override getTime(): number {
+        return new Date("9999-01-01T00:00:00.000Z").getTime();
+      }
+    }
+    const misleadingDate = new MisleadingDate("2026-01-02T18:00:00.000Z");
+    assert.deepEqual(
+      (
+        await client.getChapters(manga, {
+          showLocked: true,
+          sinceDate: misleadingDate,
+        })
+      ).map((chapter) => chapter.chapNum),
+      [3, 4],
+    );
+
+    for (const malformedDate of [new Date(Number.NaN), new Proxy(new Date(), {}) as Date]) {
+      assert.deepEqual(
+        (
+          await client.getChapters(manga, {
+            showLocked: true,
+            sinceDate: malformedDate,
+          })
+        ).map((chapter) => chapter.chapNum),
+        [1, 2.5, 3, 4],
+      );
+    }
   });
 
   it("rejects wrong pages, oversized pagination, and truncated complete lists", async () => {
@@ -219,13 +254,109 @@ describe("Qi Manga client chapters", () => {
     await assert.rejects(client.getChapters(manga), /wrong chapter page/i);
 
     client.invalidateAccountCaches();
+    chapterPageTwo = { ...CHAPTER_PAGE_TWO, totalPages: 3 };
+    await assert.rejects(client.getChapters(manga), /inconsistent declared chapter pagination/i);
+
+    client.invalidateAccountCaches();
     chapterPageOne = { ...CHAPTER_PAGE_ONE, totalPages: 101 };
     await assert.rejects(client.getChapters(manga), /too many chapter pages/i);
+
+    client.invalidateAccountCaches();
+    chapterPageOne = { ...CHAPTER_PAGE_ONE, totalPages: 100, totalItems: 10_001 };
+    await assert.rejects(client.getChapters(manga), /too many chapters/i);
 
     client.invalidateAccountCaches();
     chapterPageOne = { ...CHAPTER_PAGE_ONE, totalItems: 5 };
     chapterPageTwo = { ...CHAPTER_PAGE_TWO, totalItems: 5 };
     await assert.rejects(client.getChapters(manga), /only 4 of 5 chapters/i);
+
+    client.invalidateAccountCaches();
+    chapterPageOne = { ...CHAPTER_PAGE_ONE, totalItems: 4 };
+    chapterPageTwo = { ...CHAPTER_PAGE_TWO, totalItems: 5 };
+    await assert.rejects(client.getChapters(manga), /inconsistent declared chapter totals/i);
+
+    client.invalidateAccountCaches();
+    const locked = CHAPTER_PAGE_ONE.data[1];
+    chapterPageOne = {
+      data: [locked, { ...locked, id: 99 }],
+      totalItems: 2,
+      totalPages: 1,
+      current: 1,
+      next: null,
+    };
+    await assert.rejects(client.getChapters(manga, { showLocked: false }), /only 1 of 2 chapters/i);
+
+    client.invalidateAccountCaches();
+    chapterPageOne = { ...CHAPTER_PAGE_ONE, totalItems: 2 };
+    chapterPageTwo = { ...CHAPTER_PAGE_TWO, totalItems: 2 };
+    await assert.rejects(client.getChapters(manga), /distinct chapters.*declared total/i);
+  });
+
+  it("rejects stale chapter responses and partitions caches across account changes", async () => {
+    const manga = await new QiMangaClient().getMangaDetails(seriesSlugToId(SERIES_DETAIL.slug));
+    const onePage = JSON.stringify({
+      ...CHAPTER_PAGE_ONE,
+      data: [CHAPTER_PAGE_ONE.data[0]],
+      totalItems: 1,
+      totalPages: 1,
+      next: null,
+    });
+    let authenticationGeneration = 0;
+    let calls = 0;
+    let releaseFirst!: () => void;
+    let markFirstStarted!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const firstStarted = new Promise<void>((resolve) => {
+      markFirstStarted = resolve;
+    });
+    const client = new QiMangaClient(
+      async () => {
+        calls += 1;
+        if (calls === 1) {
+          markFirstStarted();
+          await firstGate;
+        }
+        return onePage;
+      },
+      () => authenticationGeneration,
+    );
+
+    const stale = client.getChapters(manga, { showLocked: true });
+    await firstStarted;
+    authenticationGeneration += 1;
+    releaseFirst();
+    await assert.rejects(stale, /authentication changed/i);
+
+    assert.equal((await client.getChapters(manga, { showLocked: true })).length, 1);
+    assert.equal(calls, 2);
+    authenticationGeneration += 1;
+    assert.equal((await client.getChapters(manga, { showLocked: true })).length, 1);
+    assert.equal(calls, 3);
+  });
+
+  it("fails closed when the authentication generation callback is malformed", async () => {
+    const manga = await new QiMangaClient().getMangaDetails(seriesSlugToId(SERIES_DETAIL.slug));
+    for (const generation of [Number.NaN, -1, 1.5]) {
+      let calls = 0;
+      const client = new QiMangaClient(
+        async () => {
+          calls += 1;
+          return JSON.stringify(CHAPTER_PAGE_ONE);
+        },
+        () => generation,
+      );
+      await assert.rejects(client.getChapters(manga), /authentication changed/i);
+      assert.equal(calls, 0);
+    }
+    const throwing = new QiMangaClient(
+      async () => JSON.stringify(CHAPTER_PAGE_ONE),
+      () => {
+        throw new Error("private generation failure");
+      },
+    );
+    await assert.rejects(throwing.getChapters(manga), /authentication changed/i);
   });
 
   it("returns comic and novel readers and preserves server-side paid locks", async () => {

@@ -62,6 +62,7 @@ export interface QiChapterItem {
   price?: number | null;
   discountedPrice?: number | null;
   requiresPurchase?: boolean | null;
+  requiresAuth?: boolean | null;
   createdAt?: string | null;
 }
 
@@ -72,6 +73,7 @@ export interface QiChapterImage {
 
 export interface QiChapterContent {
   slug?: string | null;
+  number?: number | null;
   title?: string | null;
   content?: string | null;
   images?: QiChapterImage[] | null;

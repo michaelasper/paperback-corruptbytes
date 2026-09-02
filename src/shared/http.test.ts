@@ -269,7 +269,7 @@ describe("shared bounded response transport", () => {
     assert.equal(decodeCalls, 0);
   });
 
-  it("classifies HTTP status before enforcing the body limit", async () => {
+  it("enforces the body limit before classifying an HTTP failure", async () => {
     let decodeCalls = 0;
     Object.assign(globalThis.Application, {
       arrayBufferToUTF8String: () => {
@@ -284,12 +284,7 @@ describe("shared bounded response transport", () => {
         { url: "https://reader.example/account", method: "GET" },
         { sourceName: "Test Reader", maxBodyBytes: 32 },
       ),
-      (error: unknown) => {
-        assert.ok(error instanceof SourceHttpError);
-        assert.equal(error.status, 401);
-        assert.match(error.message, /status 401/i);
-        return true;
-      },
+      /Test Reader.*too large/i,
     );
     assert.equal(decodeCalls, 0);
   });
@@ -307,6 +302,17 @@ describe("shared bounded response transport", () => {
       () =>
         assertResponseBodyWithinLimit(result.data, { sourceName: "Test Reader", maxBodyBytes: 32 }),
       /Test Reader.*too large/i,
+    );
+  });
+
+  it("rejects malformed runtime response bodies", () => {
+    assert.throws(
+      () =>
+        assertResponseBodyWithinLimit({ byteLength: 1 } as ArrayBuffer, {
+          sourceName: "Test Reader",
+          maxBodyBytes: 32,
+        }),
+      /response body was invalid/i,
     );
   });
 
@@ -392,6 +398,79 @@ describe("shared bounded response transport", () => {
     assert.equal(scheduleCalls, 0);
   });
 
+  it("fails closed for malformed runtime response tuples and URL callbacks", async () => {
+    Object.assign(globalThis.Application, {
+      scheduleRequest: async () => null as unknown as [Response, ArrayBuffer],
+    });
+    await assert.rejects(
+      scheduleBoundedResponse(
+        { url: "https://reader.example/api", method: "GET" },
+        { sourceName: "Test Reader" },
+      ),
+      /response was invalid/i,
+    );
+
+    let scheduleCalls = 0;
+    Object.assign(globalThis.Application, {
+      scheduleRequest: async (): Promise<[Response, ArrayBuffer]> => {
+        scheduleCalls += 1;
+        return [
+          {
+            url: "https://reader.example/api",
+            status: 200,
+            headers: {},
+            cookies: [],
+          },
+          new ArrayBuffer(0),
+        ];
+      },
+    });
+    await assert.rejects(
+      scheduleBoundedResponse(
+        { url: "https://reader.example/api", method: "GET" },
+        {
+          sourceName: "Test Reader",
+          isResponseUrlAllowed: () => {
+            throw new Error("private callback failure");
+          },
+        },
+      ),
+      /response URL was not trusted/i,
+    );
+    assert.equal(scheduleCalls, 0);
+  });
+
+  it("reads a hostile runtime status only once and fails malformed values closed", async () => {
+    let statusReads = 0;
+    Object.assign(globalThis.Application, {
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => [
+        {
+          url: request.url,
+          get status() {
+            statusReads += 1;
+            return statusReads === 1 ? Number.NaN : 200;
+          },
+          headers: {},
+          cookies: [],
+        },
+        encode("private"),
+      ],
+    });
+
+    await assert.rejects(
+      fetchSourceText(
+        { url: "https://reader.example/api", method: "GET" },
+        { sourceName: "Test Reader" },
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof SourceHttpError);
+        assert.equal(error.status, -1);
+        return true;
+      },
+    );
+    assert.equal(statusReads, 1);
+  });
+
   it("maps common status failures without leaking response bodies", async () => {
     for (const [status, expected] of [
       [404, /not found/i],
@@ -410,6 +489,22 @@ describe("shared bounded response transport", () => {
           assert.equal(error.sourceName, "Test Reader");
           assert.match(error.message, expected);
           assert.doesNotMatch(error.message, /private server detail|token=secret/i);
+          return true;
+        },
+      );
+    }
+
+    for (const malformedStatus of [Number.NaN, 99, 600, Number.MAX_SAFE_INTEGER]) {
+      installResponse(malformedStatus, '{"forged":"success"}');
+      await assert.rejects(
+        fetchSourceText(
+          { url: "https://reader.example/api", method: "GET" },
+          { sourceName: "Test Reader" },
+        ),
+        (error: unknown) => {
+          assert.ok(error instanceof SourceHttpError);
+          assert.equal(error.status, -1);
+          assert.match(error.message, /invalid HTTP status/i);
           return true;
         },
       );
@@ -441,7 +536,12 @@ describe("shared bounded response transport", () => {
         { url: "https://reader.example/api", method: "GET" },
         { sourceName: "Test Reader" },
       ),
-      /invalid JSON/i,
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /invalid JSON/i);
+        assert.equal(error.cause, undefined);
+        return true;
+      },
     );
   });
 });
@@ -514,6 +614,10 @@ describe("shared redirect policy", () => {
 
     assert.equal(
       await redirectHandler({ ...neutralImage, method: "POST" }, neutralImageResponse),
+      undefined,
+    );
+    assert.equal(
+      await redirectHandler({ ...neutralImage, method: " GET " }, neutralImageResponse),
       undefined,
     );
 

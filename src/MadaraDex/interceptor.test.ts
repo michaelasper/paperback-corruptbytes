@@ -102,7 +102,7 @@ describe("MadaraDex transport boundaries", () => {
     });
     assert.deepEqual(cdn.cookies, site.cookies);
     assert.deepEqual(foreign.cookies, { display: "wide" });
-    assert.deepEqual(unlistedSubdomain.cookies, {});
+    assert.equal("cookies" in unlistedSubdomain, false);
   });
 
   it("does not let an older response resurrect the auth token replaced by a forced refresh", async () => {

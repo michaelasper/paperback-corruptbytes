@@ -114,6 +114,8 @@ describe("Qi Manga URL contracts", () => {
     );
     assert.throws(() => buildSearchUrl({ title: "x".repeat(257) }, 1), /term is too long/i);
     assert.throws(() => buildSearchUrl({ title: "\ud800" }, 1), /term is invalid/i);
+    assert.throws(() => buildSearchUrl({ title: "\udc00" }, 1), /term is invalid/i);
+    assert.match(buildSearchUrl({ title: "hero 😀" }, 1), /q=hero%20%F0%9F%98%80/);
   });
 
   it("clamps invalid pages to one", () => {

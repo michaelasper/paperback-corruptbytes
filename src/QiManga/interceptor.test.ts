@@ -39,6 +39,11 @@ describe("Qi Manga transport headers", () => {
       method: "GET",
       headers: { authorization: "Bearer should-not-leak" },
     });
+    const fallback = await interceptor.interceptRequest({
+      url: "https://qimanga.com/qiscans.ico?cache=1",
+      method: "GET",
+      headers: { authorization: "Bearer should-not-leak" },
+    });
     const takeover = await interceptor.interceptRequest({
       url: "https://takeover.qimanga.com/private",
       method: "GET",
@@ -54,6 +59,10 @@ describe("Qi Manga transport headers", () => {
     assert.equal(image.headers?.origin, undefined);
     assert.equal(image.headers?.authorization, undefined);
     assert.equal(image.headers?.["user-agent"], "Paperback/Test");
+    assert.equal(fallback.headers?.referer, undefined);
+    assert.equal(fallback.headers?.origin, undefined);
+    assert.equal(fallback.headers?.authorization, undefined);
+    assert.equal(fallback.headers?.["user-agent"], "Paperback/Test");
     assert.equal(takeover.headers?.referer, undefined);
     assert.equal(takeover.headers?.origin, undefined);
   });

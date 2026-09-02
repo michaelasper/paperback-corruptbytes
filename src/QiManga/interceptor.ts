@@ -8,7 +8,17 @@ export const QIMANGA_INTERCEPTOR_ID = "qiMangaInterceptor";
 const FIRST_PARTY_HOSTS = new Set(["qimanga.com", "www.qimanga.com", "api.qimanga.com"]);
 const DOCUMENT_ACCEPT = "application/json,text/plain;q=0.9,text/html;q=0.8,*/*;q=0.7";
 
-const isFirstPartyUrl = (value: string): boolean => isHttpsUrlForHosts(value, FIRST_PARTY_HOSTS);
+const isPublicFallbackAssetUrl = (value: string): boolean => {
+  try {
+    const url = new PaperbackURL(value);
+    return url.hostname.toLowerCase() === "qimanga.com" && url.path === "/qiscans.ico";
+  } catch {
+    return false;
+  }
+};
+
+const isFirstPartyUrl = (value: string): boolean =>
+  isHttpsUrlForHosts(value, FIRST_PARTY_HOSTS) && !isPublicFallbackAssetUrl(value);
 
 const hostname = (value: string): string | undefined => {
   try {

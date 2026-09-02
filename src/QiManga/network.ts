@@ -33,6 +33,21 @@ const queryString = (values: [string, QueryValue][]): string =>
     .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
     .join("&");
 
+const hasUnpairedSurrogate = (value: string): boolean => {
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index);
+    if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
+      if (index + 1 >= value.length) return true;
+      const following = value.charCodeAt(index + 1);
+      if (following < 0xdc00 || following > 0xdfff) return true;
+      index += 1;
+    } else if (codeUnit >= 0xdc00 && codeUnit <= 0xdfff) {
+      return true;
+    }
+  }
+  return false;
+};
+
 export const normalizePageNumber = (page: number): number => {
   const normalized = Math.trunc(page);
   return Number.isSafeInteger(normalized) && normalized >= 1 && normalized <= 10_000
@@ -95,9 +110,7 @@ export const buildSearchUrl = (query: SearchQuery<QiMangaSearchMetadata>, page: 
   if (title.length > MAX_SEARCH_TERM_LENGTH) {
     throw new Error("Qi Manga search term is too long.");
   }
-  try {
-    encodeURIComponent(title);
-  } catch {
+  if (hasUnpairedSurrogate(title)) {
     throw new Error("Qi Manga search term is invalid.");
   }
   const parameters = queryString([

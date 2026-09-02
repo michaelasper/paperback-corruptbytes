@@ -13,6 +13,7 @@ import { AtsumaruClient } from "../src/Atsumaru/client.js";
 import { DIVA_SCANS_SITE } from "../src/DivaScans/site.js";
 import { MadaraDexClient } from "../src/MadaraDex/client.js";
 import { MgekoClient } from "../src/Mgeko/client.js";
+import { QiMangaClient } from "../src/QiManga/client.js";
 import { NovelDashClient } from "../src/shared/noveldash-client.js";
 import type { NovelDashSite } from "../src/shared/noveldash-models.js";
 import { ThunderClient } from "../src/Thunderscans/client.js";
@@ -42,7 +43,7 @@ const RETRYABLE_HTTP_STATUSES = new Set([429, 502, 503, 504]);
 const DEFAULT_SAMPLES_PER_SOURCE = 3;
 const MAX_SAMPLES_PER_SOURCE = 8;
 const DEFAULT_SOURCE_CONCURRENCY = 3;
-const MAX_SOURCE_CONCURRENCY = 7;
+const MAX_SOURCE_CONCURRENCY = 8;
 
 interface ProbeStats {
   catalogItems: number;
@@ -405,6 +406,38 @@ const probeMgeko = async (random: DeterministicRandom): Promise<ProbeStats> => {
   );
 };
 
+const probeQiManga = async (random: DeterministicRandom): Promise<ProbeStats> => {
+  const client = new QiMangaClient();
+  const sorts = ["latest", "newest", "popular", "alphabetical"] as const;
+  const pages = await Promise.all([
+    client.getBrowsePage(
+      { title: "" },
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 8),
+    ),
+    client.getSearchPage(
+      { title: random.pick(searchTerms) },
+      { id: random.pick(sorts), label: "Random probe" },
+      1,
+    ),
+  ]);
+  const items = pages.flatMap((page) => page.items);
+  return probeSeries(
+    random,
+    "Qi Manga",
+    items,
+    async (mangaId) => {
+      const manga = await client.getMangaDetails(mangaId);
+      return {
+        manga,
+        chapters: await client.getChapters(manga, { showLocked: true }),
+      };
+    },
+    (chapter) => client.getChapterDetails(chapter),
+    (chapter) => chapter.additionalInfo?.locked !== "true",
+  );
+};
+
 const probeThunder = async (random: DeterministicRandom): Promise<ProbeStats> => {
   const client = new ThunderClient();
   const sorts = ["update", "latest", "popular", "title", "titlereverse"] as const;
@@ -510,6 +543,7 @@ const probes = [
   ["Diva Scans", (random: DeterministicRandom) => probeNovelDash(DIVA_SCANS_SITE, random)],
   ["MadaraDex", probeMadaraDex],
   ["Mgeko", probeMgeko],
+  ["Qi Manga", probeQiManga],
   ["Thunder", probeThunder],
   ["Valir Scans", (random: DeterministicRandom) => probeNovelDash(VALIR_SCANS_SITE, random)],
   ["Vortex", probeVortex],

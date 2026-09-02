@@ -49,6 +49,7 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 | <img src="src/DivaScans/static/icon.png" alt="" width="28"> **Diva Scans**       | Alpha  | Comics, novels, full paginated histories, detailed search filters, and account-aware chapter access                     |
 | <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | Alpha  | Complete Madara discovery/search, exported numeric-ID compatibility, and automatically authorized image readers         |
 | <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | Alpha  | A large safe-mode catalog, detailed range/rating/availability filters, and stable comic reader slugs                    |
+| <img src="src/QiManga/static/icon.png" alt="" width="28"> **Qi Manga**           | Alpha  | Comics, novels, complete discovery, live filters, coin-lock visibility, and first-party purchased-chapter access        |
 | <img src="src/Thunderscans/static/icon.png" alt="" width="28"> **Thunder Scans** | Alpha  | Comics, novels, complete discovery/search, coin-lock visibility, and chapters already available to your Thunder account |
 | <img src="src/ValirScans/static/icon.png" alt="" width="28"> **Valir Scans**     | Alpha  | Comics, novels, complete multi-page chapter lists, route-safe readers, and first-party account sessions                 |
 | <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans**   | Alpha  | Comics, novels, rich filters, paid-state metadata, and chapters already purchased through Vortex                        |
@@ -81,6 +82,13 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 - Safe mode is enabled by default and is sent to Mgeko’s catalog API for every discovery and title-search request.
 - Exact archived series and reader slugs, fractional chapter numbers, deterministic dates, and clean image-page ordering.
 
+### Qi Manga
+
+- Featured, popular, pinned, latest, editor-selected, newly added, and complete genre discovery from Qi Manga's structured API.
+- Live genre, status, format, and sorting filters, dedicated title search, and pasted series URL resolution. Qi Manga's upstream title-search endpoint does not combine those browse filters.
+- Punctuation-safe series and chapter IDs, verified complete chapter pagination, ordered comic pages, and sanitized novel HTML.
+- First-party Qi Manga sign-in for chapters the account already owns; unavailable chapters retain explicit lock and coin-price labels.
+
 ### Thunder Scans
 
 - Popular today, editor’s picks, latest comics, latest novels, recently added titles, and the full genre catalog.
@@ -106,13 +114,13 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 1. Open the [repository installation page][install-page] on the device running Paperback.
 2. Add **paperback-corruptbytes** as a repository.
-3. Install any combination of Atsumaru, Diva Scans, MadaraDex, Mgeko, Thunder Scans, Valir Scans, and Vortex Scans.
+3. Install any combination of Atsumaru, Diva Scans, MadaraDex, Mgeko, Qi Manga, Thunder Scans, Valir Scans, and Vortex Scans.
 
-Paperback applies profile visibility before listing repository sources. Valir Scans is marked **Mature**; Diva Scans is correctly marked **Adult** because its catalog includes explicit material. Sign in to Paperback and enable the corresponding content level if either source is absent from the extension list. If the repository was added while a release was still deploying, refresh it after the public repository page shows the new source.
+Paperback applies profile visibility before listing repository sources. Valir Scans is marked **Mature**; Diva Scans and Qi Manga are marked **Adult** because their catalogs include mature or explicit genres. Sign in to Paperback and enable the corresponding content level if either source is absent from the extension list. If the repository was added while a release was still deploying, refresh it after the public repository page shows the new source.
 
 ## Account-backed chapters
 
-Thunder Scans, Valir Scans, Diva Scans, and Vortex Scans can expose chapters the signed-in site reports as purchased. Open the extension’s settings, choose its sign-in action, complete authentication on the source’s first-party page, return to the account or profile page, then tap **Done** so Paperback can import only the resulting source cookies.
+Thunder Scans, Qi Manga, Valir Scans, Diva Scans, and Vortex Scans can expose chapters the signed-in site reports as purchased. Open the extension’s settings, choose its sign-in action, complete authentication on the source’s first-party page, return to the account or profile page, then tap **Done** so Paperback can import only the resulting source cookies.
 
 Paperback’s embedded browser does not currently provide a secure external-browser or passkey handoff. If your normal sign-in depends on a passkey, use another first-party method the source offers inside the embedded view.
 
@@ -154,11 +162,11 @@ npm run test:live
 npm run test:live:random
 ```
 
-`npm test` covers deterministic fixtures, authentication boundaries, and the shared engine. `npm run test:live` checks all seven public protocols, including Atsumaru’s full anonymous rails and exported-library IDs, complete multi-page chapter histories, discovery, filters, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
+`npm test` covers deterministic fixtures, authentication boundaries, the shared engine, and seeded Monte Carlo invariants for Qi Manga IDs, chapter timelines, image ordering, and hostile novel markup. `npm run test:live` checks all eight public protocols, including Atsumaru’s full anonymous rails and exported-library IDs, complete multi-page chapter histories, discovery, filters, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
 
-Scheduled CI keeps the six sites reachable from GitHub-hosted runners as gating checks. MadaraDex currently rejects those runner IPs with HTTP 403, so its scheduled probe remains visible but non-gating; run `npm run test:live:madaradex` from another network for the authoritative live result.
+Scheduled CI keeps the seven sites reachable from GitHub-hosted runners as gating checks. MadaraDex currently rejects those runner IPs with HTTP 403, so its scheduled probe remains visible but non-gating; run `npm run test:live:madaradex` from another network for the authoritative live result.
 
-`npm run test:live:random` samples all seven current catalogs, series, complete chapter lists, and readable chapters through production parsers. It prints the random seed for replay; set `LIVE_RANDOM_SEED` to that unsigned 32-bit value and `LIVE_RANDOM_SAMPLES` from 1 through 8 to reproduce or widen a run. Independent source jobs use stable per-source random streams and a bounded worker pool; set `LIVE_RANDOM_CONCURRENCY` from 1 through 7 to tune the pool without changing what a seed selects (the default is 3).
+`npm run test:live:random` samples all eight current catalogs, series, complete chapter lists, and readable chapters through production parsers. It prints the random seed for replay; set `LIVE_RANDOM_SEED` to that unsigned 32-bit value and `LIVE_RANDOM_SAMPLES` from 1 through 8 to reproduce or widen a run. Independent source jobs use stable per-source random streams and a bounded worker pool; set `LIVE_RANDOM_CONCURRENCY` from 1 through 8 to tune the pool without changing what a seed selects (the default is 3).
 
 Add each extension under `src/<ExtensionName>/` with its own config, implementation, tests, and static assets. Cross-source URL, HTML, cache, request, and cookie behavior belongs in `src/shared/` with regression coverage for every existing consumer.
 

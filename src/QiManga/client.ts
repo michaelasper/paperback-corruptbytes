@@ -2,6 +2,7 @@ import type {
   Chapter,
   ChapterDetails,
   PagedResults,
+  Request,
   SearchQuery,
   SearchResultItem,
   SortingOption,
@@ -59,6 +60,8 @@ const searchItem = (manga: SourceManga): SearchResultItem => ({
   contentRating: manga.mangaInfo.contentRating,
 });
 
+export type QiMangaTextFetcher = (request: Request) => Promise<string>;
+
 export class QiMangaClient {
   private readonly homeCache = rawCache(2 * 60_000, 1, 2 * 1_024 * 1_024);
   private readonly catalogCache = rawCache(30_000, 32, 8 * 1_024 * 1_024);
@@ -66,11 +69,13 @@ export class QiMangaClient {
   private readonly chapterListCache = rawCache(30_000, 64, 8 * 1_024 * 1_024);
   private readonly genreCache = rawCache(15 * 60_000, 1, 512 * 1_024);
 
+  constructor(private readonly fetchTextRequest: QiMangaTextFetcher = fetchText) {}
+
   async getHome(): Promise<QiMangaHome> {
     const url = buildHomeUrl();
     return this.homeCache.getMapped(
       url,
-      () => fetchText({ url, method: "GET" }),
+      () => this.fetchTextRequest({ url, method: "GET" }),
       (body) => parseHome(parseJsonDocument<unknown>(body, url)),
     );
   }
@@ -78,7 +83,7 @@ export class QiMangaClient {
   private getCatalogPage(url: string, expectedPage: number): Promise<QiMangaSeriesPage> {
     return this.catalogCache.getMapped(
       url,
-      () => fetchText({ url, method: "GET" }),
+      () => this.fetchTextRequest({ url, method: "GET" }),
       (body) => {
         const parsed = parseSeriesPage(parseJsonDocument<unknown>(body, url));
         if (parsed.page !== expectedPage) {
@@ -125,7 +130,7 @@ export class QiMangaClient {
     const url = buildGenresUrl();
     return this.genreCache.getMapped(
       url,
-      () => fetchText({ url, method: "GET" }),
+      () => this.fetchTextRequest({ url, method: "GET" }),
       (body) => parseGenres(parseJsonDocument<unknown>(body, url)),
     );
   }
@@ -134,7 +139,7 @@ export class QiMangaClient {
     const url = buildSeriesUrl(mangaId);
     return this.seriesCache.getMapped(
       url,
-      () => fetchText({ url, method: "GET" }),
+      () => this.fetchTextRequest({ url, method: "GET" }),
       (body) => parseMangaDetails(parseJsonDocument<unknown>(body, url), mangaId),
     );
   }
@@ -148,7 +153,7 @@ export class QiMangaClient {
     const url = buildChaptersUrl(sourceManga.mangaId, expectedPage, "asc");
     return this.chapterListCache.getMapped(
       url,
-      () => fetchText({ url, method: "GET" }),
+      () => this.fetchTextRequest({ url, method: "GET" }),
       (body) => {
         const parsed = parseChapterPage(
           parseJsonDocument<unknown>(body, url),
@@ -212,7 +217,7 @@ export class QiMangaClient {
 
   async getChapterDetails(chapter: Chapter): Promise<ChapterDetails> {
     const url = buildChapterUrl(chapter.sourceManga.mangaId, chapter.chapterId);
-    const body = await fetchText({
+    const body = await this.fetchTextRequest({
       url,
       method: "GET",
       headers: { "cache-control": "no-store" },

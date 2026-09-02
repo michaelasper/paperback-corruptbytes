@@ -8,6 +8,8 @@ import {
   type ChapterDetails,
   type Cookie,
   type PagedResults,
+  type Request,
+  type Response,
   type SearchQuery,
   type SearchResultItem,
   type SortingOption,
@@ -15,9 +17,11 @@ import {
   type Tag,
 } from "@paperback/types";
 
+import { REFRESH_URL } from "./auth.js";
 import { QiMangaExtension, SECTIONS, SORTING_OPTIONS, type QiMangaClientContract } from "./main.js";
 import type { QiMangaCard, QiMangaSearchMetadata } from "./models.js";
 import type { QiMangaHome, QiMangaSeriesPage } from "./parsers.js";
+import { LATEST_RESPONSE } from "./test-fixtures.js";
 
 const originalApplication = globalThis.Application;
 let state = new Map<string, unknown>();
@@ -276,6 +280,41 @@ describe("Qi Manga extension", () => {
     await extension.getChapters(manga, sinceDate);
 
     assert.deepEqual(client.chapterOptions, [{ showLocked: false, sinceDate }]);
+  });
+
+  it("refreshes an expired session through the default client transport", async () => {
+    state.set("secure:qi_manga.secure_cookies", [
+      { name: "refreshToken", value: "secret", domain: ".qimanga.com", path: "/" },
+    ]);
+    const requests: Request[] = [];
+    let catalogCalls = 0;
+    Object.assign(Application, {
+      arrayBufferToUTF8String: (buffer: ArrayBuffer) => new TextDecoder().decode(buffer),
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+        requests.push(request);
+        if (request.url === REFRESH_URL) {
+          return [{ url: request.url, status: 204, headers: {}, cookies: [] }, new ArrayBuffer(0)];
+        }
+        catalogCalls += 1;
+        const status = catalogCalls === 1 ? 401 : 200;
+        return [
+          { url: request.url, status, headers: {}, cookies: [] },
+          new TextEncoder().encode(status === 200 ? JSON.stringify(LATEST_RESPONSE) : "").buffer,
+        ];
+      },
+    });
+
+    const results = await new QiMangaExtension().getSearchResults({ title: "" }, undefined);
+
+    assert.equal(results.items.length, 2);
+    assert.deepEqual(
+      requests.map((request) => [request.method, request.url]),
+      [
+        ["GET", "https://api.qimanga.com/api/v1/series?page=1&perPage=100&sort=latest"],
+        ["POST", REFRESH_URL],
+        ["GET", "https://api.qimanga.com/api/v1/series?page=1&perPage=100&sort=latest"],
+      ],
+    );
   });
 
   it("revalidates account-sensitive chapter state when settings open", async () => {

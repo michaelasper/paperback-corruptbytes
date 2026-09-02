@@ -6,10 +6,13 @@ import type { Cookie, Request, Response } from "@paperback/types";
 import {
   ACCOUNT_URL,
   fetchQiMangaAccountStatus,
+  fetchQiMangaTextWithSessionRefresh,
   invalidateQiMangaAuth,
   isQiMangaAuthCookieName,
   isQiMangaCookie,
   persistQiMangaCookies,
+  REFRESH_URL,
+  refreshQiMangaSession,
   replaceQiMangaCookies,
   SIGN_OUT_URL,
   signOutQiManga,
@@ -142,6 +145,192 @@ describe("Qi Manga account cookies", () => {
   });
 });
 
+describe("Qi Manga session refresh", () => {
+  it("coalesces refreshes and retries an idempotent request once", async () => {
+    const store = new MemoryCookieStore();
+    store.cookies = [cookie({ name: "refreshToken" })];
+    let refreshCalls = 0;
+    let resourceCalls = 0;
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    Object.assign(globalThis, {
+      Application: {
+        arrayBufferToUTF8String: (buffer: ArrayBuffer) => new TextDecoder().decode(buffer),
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+          if (request.url === REFRESH_URL) {
+            refreshCalls += 1;
+            await refreshGate;
+            return [
+              { url: request.url, status: 204, headers: {}, cookies: [] },
+              new ArrayBuffer(0),
+            ];
+          }
+          resourceCalls += 1;
+          const status = resourceCalls <= 2 ? 401 : 200;
+          return [
+            { url: request.url, status, headers: {}, cookies: [] },
+            new TextEncoder().encode(status === 200 ? '{"ok":true}' : "unauthorized").buffer,
+          ];
+        },
+      },
+    });
+
+    const firstRefresh = refreshQiMangaSession(store);
+    const secondRefresh = refreshQiMangaSession(store);
+    assert.equal(firstRefresh, secondRefresh);
+    releaseRefresh();
+    await Promise.all([firstRefresh, secondRefresh]);
+    assert.equal(refreshCalls, 1);
+
+    const requests = await Promise.all([
+      fetchQiMangaTextWithSessionRefresh(store, {
+        url: "https://api.qimanga.com/api/v1/home",
+        method: "GET",
+      }),
+      fetchQiMangaTextWithSessionRefresh(store, {
+        url: "https://api.qimanga.com/api/v1/series",
+        method: "GET",
+      }),
+    ]);
+    assert.deepEqual(requests, ['{"ok":true}', '{"ok":true}']);
+    assert.equal(refreshCalls, 2);
+    assert.equal(resourceCalls, 4);
+  });
+
+  it("invalidates a definitively rejected refresh and never loops", async () => {
+    const rejectedStore = new MemoryCookieStore();
+    rejectedStore.cookies = [cookie({ name: "refreshToken" })];
+    const rejectedRequests: Request[] = [];
+    Object.assign(globalThis, {
+      Application: {
+        arrayBufferToUTF8String: (buffer: ArrayBuffer) => new TextDecoder().decode(buffer),
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+          rejectedRequests.push(request);
+          return [
+            { url: request.url, status: 401, headers: {}, cookies: [] },
+            new TextEncoder().encode("unauthorized").buffer,
+          ];
+        },
+      },
+    });
+
+    await assert.rejects(
+      fetchQiMangaTextWithSessionRefresh(rejectedStore, {
+        url: "https://api.qimanga.com/api/v1/home",
+        method: "GET",
+      }),
+      /status 401/i,
+    );
+    assert.deepEqual(
+      rejectedRequests.map((request) => request.url),
+      ["https://api.qimanga.com/api/v1/home", REFRESH_URL],
+    );
+    assert.deepEqual(rejectedStore.cookies, []);
+    assert.equal(rejectedStore.invalidations, 1);
+
+    const retryStore = new MemoryCookieStore();
+    retryStore.cookies = [cookie({ name: "refreshToken" })];
+    let refreshCalls = 0;
+    let resourceCalls = 0;
+    Object.assign(globalThis.Application, {
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+        const isRefresh = request.url === REFRESH_URL;
+        if (isRefresh) refreshCalls += 1;
+        else resourceCalls += 1;
+        return [
+          { url: request.url, status: isRefresh ? 204 : 401, headers: {}, cookies: [] },
+          new ArrayBuffer(0),
+        ];
+      },
+    });
+
+    await assert.rejects(
+      fetchQiMangaTextWithSessionRefresh(retryStore, {
+        url: "https://api.qimanga.com/api/v1/home",
+        method: "GET",
+      }),
+      /status 401/i,
+    );
+    assert.equal(refreshCalls, 1);
+    assert.equal(resourceCalls, 2);
+    assert.equal(retryStore.invalidations, 1);
+  });
+
+  it("never refreshes or replays a non-idempotent request", async () => {
+    const store = new MemoryCookieStore();
+    store.cookies = [cookie({ name: "refreshToken" })];
+    const requests: Request[] = [];
+    Object.assign(globalThis, {
+      Application: {
+        arrayBufferToUTF8String: (buffer: ArrayBuffer) => new TextDecoder().decode(buffer),
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+          requests.push(request);
+          return [{ url: request.url, status: 401, headers: {}, cookies: [] }, new ArrayBuffer(0)];
+        },
+      },
+    });
+
+    await assert.rejects(
+      fetchQiMangaTextWithSessionRefresh(store, {
+        url: "https://api.qimanga.com/api/v1/series/title/purchase",
+        method: "POST",
+      }),
+      /status 401/i,
+    );
+    assert.deepEqual(
+      requests.map((request) => request.url),
+      ["https://api.qimanga.com/api/v1/series/title/purchase"],
+    );
+    assert.equal(store.cookies.length, 1);
+  });
+
+  it("preserves cookies when refresh transport cannot be trusted or bounded", async () => {
+    for (const boundary of ["redirect", "oversized"] as const) {
+      const store = new MemoryCookieStore();
+      store.cookies = [cookie({ name: "refreshToken" })];
+      let decodeCalls = 0;
+      Object.assign(globalThis, {
+        Application: {
+          arrayBufferToUTF8String: () => {
+            decodeCalls += 1;
+            return "unexpected";
+          },
+          scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+            if (request.url !== REFRESH_URL) {
+              return [
+                { url: request.url, status: 401, headers: {}, cookies: [] },
+                new ArrayBuffer(0),
+              ];
+            }
+            return [
+              {
+                url: boundary === "redirect" ? "https://evil.example/auth/refresh" : request.url,
+                status: 200,
+                headers: {},
+                cookies: [],
+              },
+              boundary === "oversized" ? new ArrayBuffer(256 * 1_024 + 1) : new ArrayBuffer(0),
+            ];
+          },
+        },
+      });
+
+      await assert.rejects(
+        fetchQiMangaTextWithSessionRefresh(store, {
+          url: "https://api.qimanga.com/api/v1/home",
+          method: "GET",
+        }),
+        boundary === "redirect" ? /not trusted/i : /too large/i,
+      );
+      assert.equal(store.cookies.length, 1);
+      assert.equal(store.invalidations, 0);
+      assert.equal(decodeCalls, 0);
+    }
+  });
+});
+
 describe("Qi Manga account status", () => {
   it("validates a current user without retaining private profile fields", async () => {
     const application = installApplication(
@@ -162,6 +351,48 @@ describe("Qi Manga account status", () => {
     assert.deepEqual(application.requests, [
       { url: ACCOUNT_URL, method: "GET", headers: { "cache-control": "no-store" } },
     ]);
+  });
+
+  it("refreshes an expired account session before declaring it logged out", async () => {
+    const store = new MemoryCookieStore();
+    store.cookies = [cookie({ name: "refreshToken" })];
+    let accountCalls = 0;
+    const requests: Request[] = [];
+    Object.assign(globalThis, {
+      Application: {
+        arrayBufferToUTF8String: (buffer: ArrayBuffer) => new TextDecoder().decode(buffer),
+        scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+          requests.push(request);
+          if (request.url === REFRESH_URL) {
+            return [
+              { url: request.url, status: 204, headers: {}, cookies: [] },
+              new ArrayBuffer(0),
+            ];
+          }
+          accountCalls += 1;
+          const status = accountCalls === 1 ? 401 : 200;
+          return [
+            { url: request.url, status, headers: {}, cookies: [] },
+            new TextEncoder().encode(status === 200 ? '{"id":42,"displayName":"Reader"}' : "")
+              .buffer,
+          ];
+        },
+      },
+    });
+
+    assert.deepEqual(await fetchQiMangaAccountStatus(store), {
+      authenticated: true,
+      displayName: "Reader",
+    });
+    assert.deepEqual(
+      requests.map((request) => [request.method, request.url]),
+      [
+        ["GET", ACCOUNT_URL],
+        ["POST", REFRESH_URL],
+        ["GET", ACCOUNT_URL],
+      ],
+    );
+    assert.equal(store.invalidations, 0);
   });
 
   it("invalidates rejected sessions and treats malformed success bodies as logged out", async () => {

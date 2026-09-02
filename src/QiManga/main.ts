@@ -22,6 +22,7 @@ import {
 import { contentRatingForTags } from "../shared/html.js";
 import {
   fetchQiMangaAccountStatus,
+  fetchQiMangaTextWithSessionRefresh,
   persistQiMangaCookies,
   type QiMangaCookieStore,
 } from "./auth.js";
@@ -145,8 +146,13 @@ export class QiMangaExtension implements ExtensionImpl<typeof QiMangaConfig> {
   private readonly cookies: QiMangaCookieStore & QiMangaCookieInterceptor =
     new QiMangaCookieInterceptor();
   private readonly interceptor = new QiMangaInterceptor();
+  private readonly client: QiMangaClientContract;
 
-  constructor(private readonly client: QiMangaClientContract = new QiMangaClient()) {}
+  constructor(client?: QiMangaClientContract) {
+    this.client =
+      client ??
+      new QiMangaClient((request) => fetchQiMangaTextWithSessionRefresh(this.cookies, request));
+  }
 
   async initialise(): Promise<void> {
     this.rateLimiter.registerInterceptor();

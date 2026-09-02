@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 import type { Cookie, Request, Response } from "@paperback/types";
 
-import type { QiMangaCookieStore } from "./auth.js";
+import { ACCOUNT_URL, REFRESH_URL, type QiMangaCookieStore } from "./auth.js";
 import { QiMangaSettingsForm, getShowLockedChapters } from "./settings.js";
 
 const originalApplication = globalThis.Application;
@@ -113,7 +113,7 @@ describe("Qi Manga settings", () => {
     );
   });
 
-  it("fails closed when imported login cookies cannot be verified", async () => {
+  it("preserves imported login cookies during a transient verification failure", async () => {
     Object.assign(Application, {
       scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
         requests.push(request);
@@ -137,10 +137,44 @@ describe("Qi Manga settings", () => {
     assert.deepEqual(form.account, { authenticated: false });
     assert.deepEqual(
       store.cookies.map((cookie) => cookie.name),
+      ["cf_clearance", "accessToken"],
+    );
+    assert.equal(store.invalidations, 1);
+    assert.equal(invalidations, 1);
+  });
+
+  it("clears imported login cookies after a definitively rejected refresh", async () => {
+    Object.assign(Application, {
+      scheduleRequest: async (request: Request): Promise<[Response, ArrayBuffer]> => {
+        requests.push(request);
+        return [
+          { url: request.url, status: 401, headers: {}, cookies: [] },
+          new TextEncoder().encode('{"error":"unauthorized"}').buffer,
+        ];
+      },
+    });
+    const store = new MemoryCookieStore();
+    store.cookies = [{ name: "cf_clearance", value: "clear", domain: ".qimanga.com" }];
+    let invalidations = 0;
+    const form = new QiMangaSettingsForm(store, { authenticated: false }, () => {
+      invalidations += 1;
+    });
+
+    await form.handleLoginComplete([
+      { name: "accessToken", value: "new", domain: ".qimanga.com", path: "/" },
+    ]);
+
+    assert.deepEqual(form.account, { authenticated: false });
+    assert.deepEqual(
+      store.cookies.map((cookie) => cookie.name),
       ["cf_clearance"],
     );
     assert.equal(store.invalidations, 2);
     assert.equal(invalidations, 1);
+    assert.deepEqual(
+      requests.map((request) => request.url),
+      [ACCOUNT_URL, REFRESH_URL],
+    );
   });
 
   it("invalidates account state after a cancelled login and exposes stale-session clearing", async () => {

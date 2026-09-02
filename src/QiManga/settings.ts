@@ -11,7 +11,6 @@ import {
 import {
   fetchQiMangaAccountStatus,
   hasQiMangaAuthCookies,
-  invalidateQiMangaAuth,
   replaceQiMangaCookies,
   signOutQiManga,
   type QiMangaAccountStatus,
@@ -44,7 +43,6 @@ export class QiMangaSettingsForm extends Form {
   async handleLoginComplete(cookies: Cookie[]): Promise<void> {
     replaceQiMangaCookies(this.cookieStore, cookies);
     this.account = await fetchQiMangaAccountStatus(this.cookieStore);
-    if (!this.account.authenticated) invalidateQiMangaAuth(this.cookieStore);
     this.onAuthenticationChanged();
     this.reloadForm();
   }

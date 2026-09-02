@@ -15,6 +15,6 @@ describe("Qi Manga extension metadata", () => {
       SourceIntents.SEARCH_RESULT_PROVIDING,
       SourceIntents.SETTINGS_FORM_PROVIDING,
     ]);
-    assert.equal(config.version, "1.0.0-alpha.2");
+    assert.equal(config.version, "1.0.0-alpha.3");
   });
 });

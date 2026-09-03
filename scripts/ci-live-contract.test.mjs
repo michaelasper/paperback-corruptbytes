@@ -13,6 +13,7 @@ test("CI gates every reachable live protocol and isolates only MadaraDex's runne
     "DIVA_LIVE_TESTS",
     "MGEKO_LIVE_TESTS",
     "QIMANGA_LIVE_TESTS",
+    "RINKO_LIVE_TESTS",
     "THUNDER_LIVE_TESTS",
     "VALIR_LIVE_TESTS",
     "VORTEX_LIVE_TESTS",

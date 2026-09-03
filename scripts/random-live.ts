@@ -15,6 +15,8 @@ import { MadaraDexClient } from "../src/MadaraDex/client.js";
 import { MgekoClient } from "../src/Mgeko/client.js";
 import { QiMangaClient } from "../src/QiManga/client.js";
 import { isNeutralMediaUrl as isQiMangaMediaUrl } from "../src/QiManga/network.js";
+import { RinkoComicsClient } from "../src/RinkoComics/client.js";
+import { isRinkoMediaUrl } from "../src/RinkoComics/network.js";
 import { NovelDashClient } from "../src/shared/noveldash-client.js";
 import type { NovelDashSite } from "../src/shared/noveldash-models.js";
 import { ThunderClient } from "../src/Thunderscans/client.js";
@@ -449,6 +451,40 @@ const probeQiManga = async (random: DeterministicRandom): Promise<ProbeStats> =>
   );
 };
 
+const probeRinkoComics = async (random: DeterministicRandom): Promise<ProbeStats> => {
+  const client = new RinkoComicsClient();
+  const sorts = ["newest", "oldest", "az", "za"] as const;
+  const pages = await Promise.all([
+    client.getCatalogPage(
+      { title: "" },
+      { id: random.pick(sorts), label: "Random probe" },
+      random.integer(1, 5),
+    ),
+    client.getCatalogPage({ title: random.pick(searchTerms) }, undefined, 1),
+  ]);
+  const items = pages.flatMap((page) => page.items);
+  return probeSeries(
+    random,
+    "Rinko Comics",
+    items,
+    async (mangaId) => {
+      const manga = await client.getMangaDetails(mangaId);
+      return { manga, chapters: await client.getChapters(manga) };
+    },
+    (chapter) => client.getChapterDetails(chapter),
+    () => true,
+    (chapter, details) => {
+      if (!("pages" in details)) {
+        assert.fail(`${chapter.chapterId} did not return Rinko Comics image pages.`);
+      }
+      assert.ok(
+        details.pages.every(isRinkoMediaUrl),
+        `${chapter.chapterId} returned a page outside Rinko Comics' media allowlist.`,
+      );
+    },
+  );
+};
+
 const probeThunder = async (random: DeterministicRandom): Promise<ProbeStats> => {
   const client = new ThunderClient();
   const sorts = ["update", "latest", "popular", "title", "titlereverse"] as const;
@@ -555,6 +591,7 @@ const probes = [
   ["MadaraDex", probeMadaraDex],
   ["Mgeko", probeMgeko],
   ["Qi Manga", probeQiManga],
+  ["Rinko Comics", probeRinkoComics],
   ["Thunder", probeThunder],
   ["Valir Scans", (random: DeterministicRandom) => probeNovelDash(VALIR_SCANS_SITE, random)],
   ["Vortex", probeVortex],

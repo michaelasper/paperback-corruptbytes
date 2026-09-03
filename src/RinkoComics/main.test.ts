@@ -144,6 +144,24 @@ describe("Rinko Comics extension", () => {
     });
   });
 
+  it("treats Paperback's null metadata sentinel as the first page", async () => {
+    const client = new FakeClient();
+    const extension = new RinkoComicsExtension(client);
+    await extension.getDiscoverSectionItems(
+      {
+        id: SECTIONS.LATEST,
+        title: "Newest series",
+        type: DiscoverSectionType.prominentCarousel,
+      },
+      null,
+    );
+    await extension.getSearchResults({ title: "" }, null, SORTING_OPTIONS[0]);
+    assert.deepEqual(
+      client.calls.map(({ page }) => page),
+      [1, 1],
+    );
+  });
+
   it("turns genres into exact searches with conservative ratings", async () => {
     const extension = new RinkoComicsExtension(new FakeClient());
     const result = await extension.getDiscoverSectionItems(

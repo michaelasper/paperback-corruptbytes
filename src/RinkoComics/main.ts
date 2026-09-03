@@ -154,7 +154,7 @@ export class RinkoComicsExtension implements ExtensionImpl<typeof RinkoComicsCon
 
   async getDiscoverSectionItems(
     section: DiscoverSection,
-    metadata: RinkoPageMetadata | undefined,
+    metadata: RinkoPageMetadata | null | undefined,
   ): Promise<PagedResults<DiscoverSectionItem>> {
     const pageNumber = pageFromMetadata(metadata);
     const id = sectionId(section);
@@ -203,7 +203,7 @@ export class RinkoComicsExtension implements ExtensionImpl<typeof RinkoComicsCon
 
   async getSearchResults(
     query: SearchQuery<RinkoSearchMetadata>,
-    metadata: RinkoPageMetadata | undefined,
+    metadata: RinkoPageMetadata | null | undefined,
     sortingOption?: SortingOption,
   ): Promise<PagedResults<SearchResultItem>> {
     const normalizedQuery = normalizeRinkoSearchQuery(query);

@@ -28,9 +28,11 @@ Follow [OpenAI's prompting best practices](https://developers.openai.com/api/doc
 
 - For answers, explanations, reviews, diagnoses, or plans, inspect and report; do not implement unless asked.
 - For changes, builds, or fixes, make in-scope local edits and run relevant non-destructive validation without asking first.
-- Ask before external writes, destructive or costly actions, purchases, or material scope expansion.
+- Every task that changes repository code or content must finish with a review-and-fix loop: independently review the candidate, reproduce and remediate concrete findings, and rerun applicable checks until no release blocker remains.
+- After that loop, commit and push the reviewed result, verify CI and any GitHub Pages release, and repair release failures. A request for repository changes authorizes these ordinary commit, push, and release operations; do not stop at a local commit or ask separately unless the user explicitly requests a hold.
+- Ask before external writes other than the ordinary commit, push, CI, and GitHub Pages operations authorized above, and before destructive or costly actions, purchases, or material scope expansion.
 
-Reading files, inspecting logs, editing in-scope code, and running tests are safe local actions. Continue until the success criteria are met or a concrete blocker remains. Lead final reports with the outcome, verification, material caveats, and next action; omit repeated background and generic reassurance.
+Reading files, inspecting logs, editing in-scope code, and running tests are safe local actions. Continue until the success criteria are met, the reviewed change is published and verified, or a concrete blocker remains. Lead final reports with the outcome, verification, material caveats, and next action; omit repeated background and generic reassurance.
 
 ## Commit & Pull Request Guidelines
 

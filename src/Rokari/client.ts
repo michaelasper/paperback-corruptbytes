@@ -100,7 +100,11 @@ export class RokariClient {
 
   async getGenrePage(slug: string): Promise<RokariCatalogPage> {
     const url = buildGenreUrl(slug);
-    return this.catalogCache.getMapped(url, () => fetchText({ url, method: "GET" }), parseCatalogCards);
+    return this.catalogCache.getMapped(
+      url,
+      () => fetchText({ url, method: "GET" }),
+      parseCatalogCards,
+    );
   }
 
   async getMangaDetails(mangaId: string): Promise<SourceManga> {

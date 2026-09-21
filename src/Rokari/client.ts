@@ -10,7 +10,7 @@ import type {
 
 import { AsyncKeyedCache, utf8ByteLength } from "../shared/async-cache.js";
 import { isHttpsUrlForDomain, resolveHttpsUrl } from "../shared/url.js";
-import type { RokariCatalogPage, RokariFilterOptions, RokariSearchMetadata } from "./models.js";
+import type { RokariCatalogPage, RokariFilterOptions } from "./models.js";
 import {
   DOMAIN,
   buildCatalogUrl,

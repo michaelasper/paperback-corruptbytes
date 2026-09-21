@@ -22,12 +22,14 @@ const archiveFiles = async (archive) => {
   const { stdout: names } = await execFileAsync("unzip", ["-l", archive], {
     maxBuffer: 1024 * 1024,
   });
-  return names.split("\n").map((line) => line.trim().split(/\s+/).pop()).filter(Boolean);
+  return names
+    .split("\n")
+    .map((line) => line.trim().split(/\s+/).pop())
+    .filter(Boolean);
 };
 
 const isNewerMarker = (next, prev) =>
-  (next?.completed === true && prev?.completed !== true) ||
-  (next?.time ?? 0) > (prev?.time ?? 0);
+  (next?.completed === true && prev?.completed !== true) || (next?.time ?? 0) > (prev?.time ?? 0);
 
 const loadAll = async (prefix) => {
   let merged = {};
@@ -36,10 +38,18 @@ const loadAll = async (prefix) => {
     for (const name of files.filter((file) => file.startsWith(prefix))) {
       const store = await readStore(archive, name);
       for (const [id, record] of Object.entries(store)) {
-        if (prefix === "__CHAPTER_PROGRESS_MARKER_V5" && merged[id] && !isNewerMarker(record, merged[id])) {
+        if (
+          prefix === "__CHAPTER_PROGRESS_MARKER_V5" &&
+          merged[id] &&
+          !isNewerMarker(record, merged[id])
+        ) {
           continue;
         }
-        if (prefix === "__LIBRARY_MANGA_V5" && merged[id] && (merged[id]?.lastRead ?? 0) >= (record?.lastRead ?? 0)) {
+        if (
+          prefix === "__LIBRARY_MANGA_V5" &&
+          merged[id] &&
+          (merged[id]?.lastRead ?? 0) >= (record?.lastRead ?? 0)
+        ) {
           continue;
         }
         merged[id] = record;
@@ -123,9 +133,11 @@ for (const [sid, chapters] of avail) {
   const lastActivity = lastActivityBySeries.get(sid) ?? 0;
   const daysAgo = lastActivity > 0 ? Math.max(0, (newestStamp - lastActivity) / 86400) : 365;
   const recency = 0.5 + 0.5 * Math.exp(-daysAgo / HALF_LIFE_DAYS);
-  const score = completed * (0.5 + 0.5 * ratio) * recency * (fromAdultSource ? ADULT_SOURCE_BOOST : 1);
+  const score =
+    completed * (0.5 + 0.5 * ratio) * recency * (fromAdultSource ? ADULT_SOURCE_BOOST : 1);
   const tags = (meta?.tagGroups ?? []).flatMap((group) => group.tags.map((tag) => tag.title));
-  if (fromAdultSource && !tags.some((tag) => tag.toLowerCase() === "adult")) tags.push("Adult (source)");
+  if (fromAdultSource && !tags.some((tag) => tag.toLowerCase() === "adult"))
+    tags.push("Adult (source)");
   scored.push({
     sourceId: source.sourceId,
     mangaId: source.mangaId,

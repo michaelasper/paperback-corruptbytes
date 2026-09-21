@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 
-const UA = "paperback-corruptbytes-recommend/1.0 (+https://github.com/michaelasper/paperback-corruptbytes)";
+const UA =
+  "paperback-corruptbytes-recommend/1.0 (+https://github.com/michaelasper/paperback-corruptbytes)";
 const DELAY_MS = 1200;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -9,8 +10,14 @@ const flag = (name, fallback = "") => {
   return arg ? arg.slice(name.length + 3) : fallback;
 };
 
-const INCLUDE = flag("include-genres").split(",").map((genre) => genre.trim().toLowerCase()).filter(Boolean);
-const EXCLUDE = flag("exclude-genres").split(",").map((genre) => genre.trim().toLowerCase()).filter(Boolean);
+const INCLUDE = flag("include-genres")
+  .split(",")
+  .map((genre) => genre.trim().toLowerCase())
+  .filter(Boolean);
+const EXCLUDE = flag("exclude-genres")
+  .split(",")
+  .map((genre) => genre.trim().toLowerCase())
+  .filter(Boolean);
 const MAX_ENRICH = Math.max(1, Number(flag("max-enrich", "30")) || 30);
 const TOP_N = Math.max(1, Number(flag("top-n", "15")) || 15);
 
@@ -28,14 +35,15 @@ const firstSeriesHit = (html) => {
 };
 
 const genresOf = (html) => {
-  const combined = [...html.matchAll(/\/series\?genre=([A-Za-z_-]+)"/g)]
-    .map((match) => match[1].split("_"))
-    .sort((left, right) => right.length - left.length)[0] ?? [];
+  const combined =
+    [...html.matchAll(/\/series\?genre=([A-Za-z_-]+)"/g)]
+      .map((match) => match[1].split("_"))
+      .sort((left, right) => right.length - left.length)[0] ?? [];
   return [...new Set(combined)];
 };
 
 const categoriesOf = (html) => {
-  const box = html.split('data-cy="info-box-categories"')[1]?.split('data-cy=')[0] ?? "";
+  const box = html.split('data-cy="info-box-categories"')[1]?.split("data-cy=")[0] ?? "";
   const tags = [...box.matchAll(/\/series\?category=([^"#]+)"[^>]*>([^<]+)</g)]
     .map((match) => decodeURIComponent(match[1].replace(/\+/g, " ")).trim())
     .filter(Boolean);
@@ -43,14 +51,16 @@ const categoriesOf = (html) => {
 };
 
 const relatedOf = (html) => {
-  const links = [...html.matchAll(/href="(https:\/\/www\.mangaupdates\.com\/series\/[a-z0-9]+\/[^"<>?#\\]+)"/g)]
-    .map((match) => match[1]);
+  const links = [
+    ...html.matchAll(/href="(https:\/\/www\.mangaupdates\.com\/series\/[a-z0-9]+\/[^"<>?#\\]+)"/g),
+  ].map((match) => match[1]);
   return [...new Set(links)];
 };
 
 const groupsOf = (html) => {
-  const links = [...html.matchAll(/href="(https:\/\/www\.mangaupdates\.com\/group\/[a-z0-9]+\/[^"<>?#\\]+)"/g)]
-    .map((match) => match[1]);
+  const links = [
+    ...html.matchAll(/href="(https:\/\/www\.mangaupdates\.com\/group\/[a-z0-9]+\/[^"<>?#\\]+)"/g),
+  ].map((match) => match[1]);
   return [...new Set(links)];
 };
 
@@ -73,7 +83,9 @@ for (const entry of report.topSeries.slice(0, TOP_N)) {
     const seriesHtml = await fetchText(seriesUrl);
     await sleep(DELAY_MS);
     const genres = genresOf(seriesHtml);
-    const related = relatedOf(seriesHtml).filter((url) => url !== seriesUrl).slice(0, 12);
+    const related = relatedOf(seriesHtml)
+      .filter((url) => url !== seriesUrl)
+      .slice(0, 12);
     const groups = groupsOf(seriesHtml);
     for (const url of related) {
       const vote = relatedVotes.get(url) ?? { votes: 0, from: [] };
@@ -138,4 +150,6 @@ const out = {
 
 await mkdir("/tmp/rec", { recursive: true });
 await writeFile("/tmp/rec/mu-match.json", JSON.stringify(out, null, 2));
-process.stdout.write(`Wrote ${matched.length} matches, ${out.related.length} related, ${out.groups.length} groups\n`);
+process.stdout.write(
+  `Wrote ${matched.length} matches, ${out.related.length} related, ${out.groups.length} groups\n`,
+);

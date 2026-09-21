@@ -83,7 +83,7 @@ const sectionId = (value: unknown): string | undefined => {
 };
 
 const pageFromMetadata = (value: unknown): number => {
-  if (value === undefined) return 1;
+  if (value === undefined || value === null) return 1;
   try {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       throw new Error("invalid");

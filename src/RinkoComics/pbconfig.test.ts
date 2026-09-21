@@ -11,7 +11,7 @@ const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 describe("Rinko Comics metadata", () => {
   it("declares only implemented public capabilities", () => {
     assert.equal(config.name, "Rinko Comics");
-    assert.equal(config.version, "1.0.0-alpha.1");
+    assert.equal(config.version, "1.0.0-alpha.2");
     assert.equal(config.language, "en");
     assert.equal(config.contentRating, ContentRating.MATURE);
     assert.deepEqual(config.capabilities, [

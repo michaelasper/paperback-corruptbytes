@@ -186,6 +186,21 @@ describe("Rinko Comics extension", () => {
     });
   });
 
+  it("accepts missing page metadata the way the app sends first loads", async () => {
+    const extension = new RinkoComicsExtension(new FakeClient());
+    for (const metadata of [undefined, null]) {
+      const result = await extension.getDiscoverSectionItems(
+        {
+          id: SECTIONS.LATEST,
+          title: "Newest series",
+          type: DiscoverSectionType.prominentCarousel,
+        },
+        metadata as { page: number } | undefined,
+      );
+      assert.ok(result.items.length > 0);
+    }
+  });
+
   it("rejects malformed runtime page metadata and hostile section objects safely", async () => {
     const extension = new RinkoComicsExtension(new FakeClient());
     for (const metadata of [

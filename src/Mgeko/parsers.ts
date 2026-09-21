@@ -204,7 +204,7 @@ export const parseMangaDetails = (html: string, mangaId: string): SourceManga =>
           {
             id: "genres",
             title: "Genres",
-            tags: genres.map((title) => ({ id: title, title })),
+            tags: genres.map((title) => ({ id: encodePaperbackIdComponent(title), title })),
           },
         ],
       }),

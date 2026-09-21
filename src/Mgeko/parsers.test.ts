@@ -107,6 +107,19 @@ describe("Mgeko title and reader parsers", () => {
     });
   });
 
+  it("encodes multi-word genre titles into valid Paperback tag IDs", () => {
+    const html = SERIES_HTML.replace("<li>Action</li>", "<li>Martial Arts</li>");
+    const result = parseMangaDetails(html, "dark-%7E-mage");
+    const tags = result.mangaInfo.tagGroups?.[0]?.tags ?? [];
+    assert.deepEqual(tags, [
+      { id: "Martial%20Arts", title: "Martial Arts" },
+      { id: "Mature", title: "Mature" },
+    ]);
+    for (const tag of tags) {
+      assert.match(tag.id, /^[A-Za-z0-9._\-@()[\]%?#+=\/:&]+$/);
+    }
+  });
+
   it("parses Django timestamps deterministically and never fabricates invalid dates", () => {
     assert.equal(parseDate("Aug. 6, 2026, 2:21 p.m.")?.toISOString(), "2026-08-06T14:21:00.000Z");
     assert.equal(parseDate("July 30, 2026, 2:04 p.m.")?.toISOString(), "2026-07-30T14:04:00.000Z");

@@ -2,9 +2,7 @@ import type {
   Chapter,
   ChapterDetails,
   PagedResults,
-  SearchQuery,
   SearchResultItem,
-  SortingOption,
   SourceManga,
 } from "@paperback/types";
 

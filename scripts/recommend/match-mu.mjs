@@ -12,6 +12,7 @@ const flag = (name, fallback = "") => {
 const INCLUDE = flag("include-genres").split(",").map((genre) => genre.trim().toLowerCase()).filter(Boolean);
 const EXCLUDE = flag("exclude-genres").split(",").map((genre) => genre.trim().toLowerCase()).filter(Boolean);
 const MAX_ENRICH = Math.max(1, Number(flag("max-enrich", "30")) || 30);
+const TOP_N = Math.max(1, Number(flag("top-n", "15")) || 15);
 
 const report = JSON.parse(await readFile("/tmp/rec-report.json", "utf8"));
 const owned = new Set(
@@ -52,7 +53,7 @@ const matched = [];
 const relatedVotes = new Map();
 const groupVotes = new Map();
 
-for (const entry of report.topSeries.slice(0, 15)) {
+for (const entry of report.topSeries.slice(0, TOP_N)) {
   const title = entry.titles[0] ?? entry.mangaId;
   try {
     const searchHtml = await fetchText(

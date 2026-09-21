@@ -116,7 +116,7 @@ describe("Mgeko title and reader parsers", () => {
       { id: "Mature", title: "Mature" },
     ]);
     for (const tag of tags) {
-      assert.match(tag.id, /^[A-Za-z0-9._\-@()[\]%?#+=\/:&]+$/);
+      assert.match(tag.id, /^[A-Za-z0-9._\-@()[\]%?#+=/:&]+$/);
     }
   });
 

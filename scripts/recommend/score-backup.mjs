@@ -4,21 +4,48 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-const BACKUP = process.argv.find((arg) => arg.startsWith("--backup="))?.replace("--backup=", "") ??
-  "/Users/asper/Downloads/Paperback-Archive.20-09-2026.16-37-26.pas5";
+const BACKUPS = process.argv
+  .filter((arg) => arg.startsWith("--backup="))
+  .map((arg) => arg.slice("--backup=".length))
+  .filter(Boolean);
+if (BACKUPS.length === 0) {
+  BACKUPS.push("/Users/asper/Downloads/Paperback-Archive.20-09-2026.16-37-26.pas5");
+}
 
-const readStore = async (dir, name) => {
-  const { stdout } = await execFileAsync("unzip", ["-p", BACKUP, name], { maxBuffer: 32 * 1024 * 1024 });
+const readStore = async (archive, name) => {
+  const { stdout } = await execFileAsync("unzip", ["-p", archive, name], {
+    maxBuffer: 32 * 1024 * 1024,
+  });
   return JSON.parse(stdout);
 };
 
-const { stdout: names } = await execFileAsync("unzip", ["-l", BACKUP], { maxBuffer: 1024 * 1024 });
-const files = names.split("\n").map((line) => line.trim().split(/\s+/).pop()).filter(Boolean);
+const archiveFiles = async (archive) => {
+  const { stdout: names } = await execFileAsync("unzip", ["-l", archive], {
+    maxBuffer: 1024 * 1024,
+  });
+  return names.split("\n").map((line) => line.trim().split(/\s+/).pop()).filter(Boolean);
+};
+
+const isNewerMarker = (next, prev) =>
+  (next?.completed === true && prev?.completed !== true) ||
+  (next?.time ?? 0) > (prev?.time ?? 0);
 
 const loadAll = async (prefix) => {
   let merged = {};
-  for (const name of files.filter((file) => file.startsWith(prefix))) {
-    merged = { ...merged, ...(await readStore(null, name)) };
+  for (const archive of BACKUPS) {
+    const files = await archiveFiles(archive);
+    for (const name of files.filter((file) => file.startsWith(prefix))) {
+      const store = await readStore(archive, name);
+      for (const [id, record] of Object.entries(store)) {
+        if (prefix === "__CHAPTER_PROGRESS_MARKER_V5" && merged[id] && !isNewerMarker(record, merged[id])) {
+          continue;
+        }
+        if (prefix === "__LIBRARY_MANGA_V5" && merged[id] && (merged[id]?.lastRead ?? 0) >= (record?.lastRead ?? 0)) {
+          continue;
+        }
+        merged[id] = record;
+      }
+    }
   }
   return merged;
 };

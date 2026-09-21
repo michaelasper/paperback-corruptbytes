@@ -5,8 +5,12 @@ Local only script pair. No backup data is committed.
 ## Score the backup
 
 ```sh
-node scripts/recommend/score-backup.mjs --backup=/path/to/Paperback-Archive.pas5 > /tmp/rec-report.json
+node scripts/recommend/score-backup.mjs --backup=/path/to/oldest.pas5 --backup=/path/to/newest.pas5 > /tmp/rec-report.json
 ```
+
+Repeat `--backup` oldest first to merge archives. Chapters and series
+union by ID. Markers keep the completed or latest stamp. Library rows
+keep the latest read stamp.
 
 Reads the library, tracked series, series info, chapters, and progress
 markers. Scores each series as completed times a completion ratio bonus

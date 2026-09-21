@@ -4,6 +4,15 @@ const UA = "paperback-corruptbytes-recommend/1.0 (+https://github.com/michaelasp
 const DELAY_MS = 1200;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const flag = (name, fallback = "") => {
+  const arg = process.argv.find((item) => item.startsWith(`--${name}=`));
+  return arg ? arg.slice(name.length + 3) : fallback;
+};
+
+const INCLUDE = flag("include-genres").split(",").map((genre) => genre.trim().toLowerCase()).filter(Boolean);
+const EXCLUDE = flag("exclude-genres").split(",").map((genre) => genre.trim().toLowerCase()).filter(Boolean);
+const MAX_ENRICH = Math.max(1, Number(flag("max-enrich", "30")) || 30);
+
 const report = JSON.parse(await readFile("/tmp/rec-report.json", "utf8"));
 const owned = new Set(
   report.topSeries.flatMap((entry) => entry.titles).map((title) => title.toLowerCase()),
@@ -84,12 +93,33 @@ const titlesInLibrary = new Set(
   report.topSeries.flatMap((entry) => entry.titles.map((title) => title.toLowerCase())),
 );
 
+const passesGenreFilter = (genres) => {
+  const lower = genres.map((genre) => genre.toLowerCase());
+  if (EXCLUDE.some((genre) => lower.includes(genre))) return false;
+  if (INCLUDE.length > 0 && !INCLUDE.some((genre) => lower.includes(genre))) return false;
+  return true;
+};
+
+const rankedRelated = [...relatedVotes.entries()]
+  .map(([url, vote]) => ({ url, votes: Math.round(vote.votes), from: vote.from.slice(0, 3) }))
+  .sort((left, right) => right.votes - left.votes);
+
+const enriched = [];
+for (const candidate of rankedRelated.slice(0, MAX_ENRICH)) {
+  try {
+    const html = await fetchText(candidate.url);
+    await sleep(DELAY_MS);
+    const genres = genresOf(html);
+    if (passesGenreFilter(genres)) enriched.push({ ...candidate, genres });
+  } catch (error) {
+    process.stdout.write(`Skip enrich ${candidate.url}: ${String(error)}\n`);
+  }
+}
+
 const out = {
   matched,
-  related: [...relatedVotes.entries()]
-    .map(([url, vote]) => ({ url, votes: Math.round(vote.votes), from: vote.from.slice(0, 3) }))
-    .sort((left, right) => right.votes - left.votes)
-    .slice(0, 30),
+  genreFilter: { include: INCLUDE, exclude: EXCLUDE },
+  related: (INCLUDE.length > 0 || EXCLUDE.length > 0 ? enriched : rankedRelated).slice(0, 30),
   groups: [...groupVotes.entries()]
     .map(([url, vote]) => ({ url, votes: Math.round(vote.votes), from: vote.from.slice(0, 3) }))
     .sort((left, right) => right.votes - left.votes)

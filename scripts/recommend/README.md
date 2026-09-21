@@ -22,4 +22,14 @@ Reads `/tmp/rec-report.json`. Searches MangaUpdates for the top liked
 titles. Collects genres, related series, and scanlator groups. Votes are
 weighted by the backup score. Writes `/tmp/rec/mu-match.json`.
 
+## Genre filters
+
+```sh
+node scripts/recommend/match-mu.mjs --include-genres=action,fantasy --exclude-genres=hentai,adult
+```
+
+Each top related candidate gets its series page fetched for genres.
+Candidates outside the include list or inside the exclude list are
+dropped. `--max-enrich=30` bounds the extra fetches.
+
 Requests run with a polite delay and a tool user agent.

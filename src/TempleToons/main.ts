@@ -8,6 +8,7 @@ import {
   type DiscoverSection,
   type DiscoverSectionItem,
   type ExtensionImpl,
+  type Form,
   type PagedResults,
   type Request,
   type SearchQuery,
@@ -22,6 +23,7 @@ import { TempleInterceptor } from "./interceptor.js";
 import type { TempleCatalogPage, TemplePageMetadata, TempleSearchMetadata } from "./models.js";
 import type TempleConfig from "./pbconfig.js";
 import { TempleAdvancedSearchForm } from "./search.js";
+import { TempleSettingsForm } from "./settings.js";
 
 export interface TempleClientContract {
   getCatalogPage(page: number): Promise<TempleCatalogPage>;
@@ -71,6 +73,10 @@ export class TempleExtension implements ExtensionImpl<typeof TempleConfig> {
     this.rateLimiter.registerInterceptor();
     this.cookies.registerInterceptor();
     this.interceptor.registerInterceptor();
+  }
+
+  async getSettingsForm(): Promise<Form> {
+    return new TempleSettingsForm();
   }
 
   async cloudflareBypassCompleted(

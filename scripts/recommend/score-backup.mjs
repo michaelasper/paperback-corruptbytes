@@ -42,6 +42,13 @@ for (const [sid, ids] of avail) for (const id of ids) ch2sid.set(id, sid);
 
 const APPLE_EPOCH = 978307200;
 const HALF_LIFE_DAYS = Number(process.env.REC_HALF_LIFE_DAYS ?? 120);
+const ADULT_SOURCES = new Set(
+  (process.env.REC_ADULT_SOURCES ?? "divascans,templetoons,valirscans")
+    .split(",")
+    .map((source) => source.trim().toLowerCase())
+    .filter(Boolean),
+);
+const ADULT_SOURCE_BOOST = Number(process.env.REC_ADULT_BOOST ?? 1.25);
 
 const completedBySeries = new Map();
 const lastActivityBySeries = new Map();
@@ -86,16 +93,19 @@ for (const [sid, chapters] of avail) {
   const available = chapters.length;
   const completed = completedBySeries.get(sid) ?? 0;
   if (available === 0) continue;
+  const fromAdultSource = ADULT_SOURCES.has(String(source.sourceId ?? "").toLowerCase());
   const ratio = completed / available;
   const lastActivity = lastActivityBySeries.get(sid) ?? 0;
   const daysAgo = lastActivity > 0 ? Math.max(0, (newestStamp - lastActivity) / 86400) : 365;
   const recency = 0.5 + 0.5 * Math.exp(-daysAgo / HALF_LIFE_DAYS);
-  const score = completed * (0.5 + 0.5 * ratio) * recency;
+  const score = completed * (0.5 + 0.5 * ratio) * recency * (fromAdultSource ? ADULT_SOURCE_BOOST : 1);
+  const tags = (meta?.tagGroups ?? []).flatMap((group) => group.tags.map((tag) => tag.title));
+  if (fromAdultSource && !tags.some((tag) => tag.toLowerCase() === "adult")) tags.push("Adult (source)");
   scored.push({
     sourceId: source.sourceId,
     mangaId: source.mangaId,
     titles: titlesOf(meta),
-    tags: (meta?.tagGroups ?? []).flatMap((group) => group.tags.map((tag) => tag.title)),
+    tags,
     available,
     completed,
     ratio: Math.round(ratio * 100) / 100,

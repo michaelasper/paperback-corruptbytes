@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { test } from "node:test";
 
 import { SourceIntents } from "@paperback/types";
@@ -18,6 +18,17 @@ void test("every source metadata declares a valid extension id and version", asy
     assert.ok(
       Array.isArray(config.capabilities) && config.capabilities.length > 0,
       `${id} needs capabilities`,
+    );
+  }
+});
+
+void test("every source entry point exports an instance named after its directory", async () => {
+  for (const id of sources) {
+    const main = await readFile(new URL(`../src/${id}/main.ts`, import.meta.url), "utf8");
+    assert.match(
+      main,
+      new RegExp(`export\\s+const\\s+${id}\\s*=`),
+      `${id}/main.ts must export an instance named ${id} for the Paperback runtime lookup`,
     );
   }
 });

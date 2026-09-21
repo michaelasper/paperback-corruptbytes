@@ -148,4 +148,4 @@ export class TempleExtension implements ExtensionImpl<typeof TempleConfig> {
   }
 }
 
-export const Temple = new TempleExtension();
+export const TempleToons = new TempleExtension();

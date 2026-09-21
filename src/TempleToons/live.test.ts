@@ -2,7 +2,7 @@ import { after, describe, it } from "node:test";
 
 import type { Request, Response as PaperbackResponse } from "@paperback/types";
 
-import { Temple } from "./main.js";
+import { TempleToons as Temple } from "./main.js";
 
 const live = process.env.TEMPLE_LIVE_TESTS === "1";
 const originalApplication = globalThis.Application;

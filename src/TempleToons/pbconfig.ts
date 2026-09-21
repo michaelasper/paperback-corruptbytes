@@ -4,7 +4,7 @@ export default {
   name: "Temple Scan",
   description:
     "Temple Scan manhwa with live search, complete chapter lists, premium visibility, and direct CDN readers.",
-  version: "1.0.0-alpha.2",
+  version: "1.0.0-alpha.3",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.ADULT,

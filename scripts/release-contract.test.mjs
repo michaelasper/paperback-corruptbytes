@@ -157,7 +157,7 @@ async function makeFifo(path) {
   }
 }
 
-test("version utilities enforce semantic versions and prerelease ordering", () => {
+void test("version utilities enforce semantic versions and prerelease ordering", () => {
   assert.equal(isValidSemver("1.0.0-alpha.1"), true);
   assert.equal(isValidSemver("1.0"), false);
   assert.equal(isValidSemver("1.0.0-alpha.01"), false);
@@ -169,7 +169,7 @@ test("version utilities enforce semantic versions and prerelease ordering", () =
   assert.equal(compareSemver("1.0.0", "1.0.0-rc.1"), 1);
 });
 
-test("source ID ordering is deterministic by JavaScript code units", async () => {
+void test("source ID ordering is deterministic by JavaScript code units", async () => {
   const { root } = await releaseFixture({ a: "1.0.0-alpha.1", B: "1.0.0-alpha.1" });
   try {
     const result = await verifyVersionBumps({ root, files: [] });
@@ -179,7 +179,7 @@ test("source ID ordering is deterministic by JavaScript code units", async () =>
   }
 });
 
-test("version extraction is comment-safe, quote-safe, and limited to the default object", () => {
+void test("version extraction is comment-safe, quote-safe, and limited to the default object", () => {
   const source = `
     // version: "0.0.1"
     const nested = { version: "0.0.2" };
@@ -191,7 +191,7 @@ test("version extraction is comment-safe, quote-safe, and limited to the default
   assert.equal(extractVersion(source, "fixture/pbconfig.ts"), "1.0.0-alpha.1");
 });
 
-test("version extraction does not execute config code", () => {
+void test("version extraction does not execute config code", () => {
   const source = `
     const sideEffect = (() => { throw new Error("must not execute"); })();
     export default { version: "1.0.0" };
@@ -199,7 +199,7 @@ test("version extraction does not execute config code", () => {
   assert.equal(extractVersion(source), "1.0.0");
 });
 
-test("version extraction rejects object shapes that can change the runtime version", () => {
+void test("version extraction rejects object shapes that can change the runtime version", () => {
   const cases = [
     {
       name: "spread",
@@ -238,7 +238,7 @@ test("version extraction rejects object shapes that can change the runtime versi
   }
 });
 
-test("static extension metadata extraction maps Paperback enum members", () => {
+void test("static extension metadata extraction maps Paperback enum members", () => {
   const source = `
     import { ContentRating, SourceIntents, type ExtensionInfo } from "@paperback/types";
     export default {
@@ -266,7 +266,7 @@ test("static extension metadata extraction maps Paperback enum members", () => {
   });
 });
 
-test("static metadata evaluation charges expanded alias costs", () => {
+void test("static metadata evaluation charges expanded alias costs", () => {
   const repeatedLayers = (count) => {
     const lines = ['const layer0 = ["x"];'];
     for (let index = 1; index <= count; index += 1) {
@@ -286,7 +286,7 @@ test("static metadata evaluation charges expanded alias costs", () => {
   );
 });
 
-test("static metadata evaluation validates unused constants and cycles", () => {
+void test("static metadata evaluation validates unused constants and cycles", () => {
   for (const source of [
     `const unused = getValue(); export default { version: "1.0.0" };`,
     `const cycle = cycle; export default { version: "1.0.0" };`,
@@ -298,7 +298,7 @@ test("static metadata evaluation validates unused constants and cycles", () => {
   }
 });
 
-test("static metadata evaluation rejects a const reference in the temporal dead zone", () => {
+void test("static metadata evaluation rejects a const reference in the temporal dead zone", () => {
   assert.throws(
     () =>
       extractExtensionInfo(
@@ -308,7 +308,7 @@ test("static metadata evaluation rejects a const reference in the temporal dead 
   );
 });
 
-test("static metadata evaluation rejects default references to later constants", () => {
+void test("static metadata evaluation rejects default references to later constants", () => {
   assert.throws(
     () =>
       extractExtensionInfo(
@@ -318,7 +318,7 @@ test("static metadata evaluation rejects default references to later constants",
   );
 });
 
-test("static metadata evaluation applies TDZ to left-to-right const declarators", () => {
+void test("static metadata evaluation applies TDZ to left-to-right const declarators", () => {
   assert.throws(
     () =>
       extractExtensionInfo(`const a = b, b = "x"; export default { version: "1.0.0", value: a };`),
@@ -326,7 +326,7 @@ test("static metadata evaluation applies TDZ to left-to-right const declarators"
   );
 });
 
-test("static metadata evaluation accepts earlier constants and textually later imports", () => {
+void test("static metadata evaluation accepts earlier constants and textually later imports", () => {
   const result = extractExtensionInfo(
     `const label = "ok";
 export default { version: "1.0.0", name: label, contentRating: ContentRating.ADULT };
@@ -339,7 +339,7 @@ import { ContentRating } from "@paperback/types";`,
   });
 });
 
-test("static metadata evaluation validates later unused constants after the default export", () => {
+void test("static metadata evaluation validates later unused constants after the default export", () => {
   const result = extractExtensionInfo(`export default { version: "1.0.0" }; const later = "ok";`);
   assert.equal(result.version, "1.0.0");
 
@@ -349,7 +349,7 @@ test("static metadata evaluation validates later unused constants after the defa
   );
 });
 
-test("pre-parser guard rejects ten-thousand nested delimiters in a constrained child", async () => {
+void test("pre-parser guard rejects ten-thousand nested delimiters in a constrained child", async () => {
   const versionUtilsUrl = new URL("./version-utils.mjs", import.meta.url).href;
   const childScript = `
     import { extractVersion } from ${JSON.stringify(versionUtilsUrl)};
@@ -374,7 +374,7 @@ test("pre-parser guard rejects ten-thousand nested delimiters in a constrained c
   assert.match(stdout, /nesting depth exceeds 128/);
 });
 
-test("pre-parser guard ignores delimiters in escaped strings and comments", () => {
+void test("pre-parser guard ignores delimiters in escaped strings and comments", () => {
   const opens = "(".repeat(5000);
   const closes = ")".repeat(5000);
   const source = `const text = "${opens}"; // ${closes}\n/* ${opens} ${closes} */\nexport default { version: "1.0.0", value: text };`;
@@ -382,7 +382,7 @@ test("pre-parser guard ignores delimiters in escaped strings and comments", () =
   assert.equal(result.value, opens);
 });
 
-test("pre-parser guard rejects mismatched and unclosed syntax before parsing", () => {
+void test("pre-parser guard rejects mismatched and unclosed syntax before parsing", () => {
   for (const source of [
     'export default { version: "1.0.0" ] ;',
     'export default { version: "1.0.0";',
@@ -393,7 +393,7 @@ test("pre-parser guard rejects mismatched and unclosed syntax before parsing", (
   }
 });
 
-test("metadata parsers enforce the shared pbconfig source byte cap before parsing", () => {
+void test("metadata parsers enforce the shared pbconfig source byte cap before parsing", () => {
   const oversized = `export default { version: "1.0.0", value: "${"x".repeat(PB_CONFIG_MAX_BYTES)}" };`;
   assert.throws(
     () => extractVersion(oversized, "fixture/oversized-pbconfig.ts"),
@@ -401,7 +401,7 @@ test("metadata parsers enforce the shared pbconfig source byte cap before parsin
   );
 });
 
-test("static metadata rejects non-computed __proto__ keys at every object level", () => {
+void test("static metadata rejects non-computed __proto__ keys at every object level", () => {
   assert.throws(
     () =>
       extractExtensionInfo(
@@ -419,7 +419,7 @@ test("static metadata rejects non-computed __proto__ keys at every object level"
   );
 });
 
-test("static extension metadata extraction rejects dynamic metadata", () => {
+void test("static extension metadata extraction rejects dynamic metadata", () => {
   const cases = [
     `const value = getValue(); export default { version: "1.0.0", value };`,
     `const value = { version: "1.0.0" }; export default { ...value };`,
@@ -444,7 +444,7 @@ test("static extension metadata extraction rejects dynamic metadata", () => {
   }
 });
 
-test("version bumps reject implementation edits without a higher source version", async () => {
+void test("version bumps reject implementation edits without a higher source version", async () => {
   const { root, base } = await releaseFixture();
   try {
     await writeFile(join(root, "src", "Alpha", "main.ts"), "export default { changed: true };\n");
@@ -457,7 +457,7 @@ test("version bumps reject implementation edits without a higher source version"
   }
 });
 
-test("version bumps allow a higher source version for implementation edits", async () => {
+void test("version bumps allow a higher source version for implementation edits", async () => {
   const { root, base } = await releaseFixture();
   try {
     await writeSource(root, "Alpha", "1.0.0-alpha.2", {
@@ -470,7 +470,7 @@ test("version bumps allow a higher source version for implementation edits", asy
   }
 });
 
-test("version bumps reject downgrades", async () => {
+void test("version bumps reject downgrades", async () => {
   const { root, base } = await releaseFixture({ Alpha: "1.0.0-alpha.2" });
   try {
     await writeSource(root, "Alpha", "1.0.0-alpha.1", {
@@ -485,7 +485,7 @@ test("version bumps reject downgrades", async () => {
   }
 });
 
-test("version bump verification rejects a symlinked source directory", async () => {
+void test("version bump verification rejects a symlinked source directory", async () => {
   const { root, base } = await releaseFixture({
     Alpha: "1.0.0-alpha.1",
     Beta: "1.0.0-alpha.1",
@@ -503,7 +503,7 @@ test("version bump verification rejects a symlinked source directory", async () 
   }
 });
 
-test("version bump verification rejects non-directory source entries", async () => {
+void test("version bump verification rejects non-directory source entries", async () => {
   const { root, base } = await releaseFixture();
   try {
     const alphaDirectory = join(root, "src", "Alpha");
@@ -518,7 +518,7 @@ test("version bump verification rejects non-directory source entries", async () 
   }
 });
 
-test("version bump verification rejects symlinked pbconfig metadata", async () => {
+void test("version bump verification rejects symlinked pbconfig metadata", async () => {
   const { root, base } = await releaseFixture({
     Alpha: "1.0.0-alpha.1",
     Beta: "1.0.0-alpha.1",
@@ -537,7 +537,7 @@ test("version bump verification rejects symlinked pbconfig metadata", async () =
   }
 });
 
-test("bundle verification rejects a FIFO pbconfig instead of skipping the source", async (t) => {
+void test("bundle verification rejects a FIFO pbconfig instead of skipping the source", async (t) => {
   const root = await bundleFixture();
   try {
     const configPath = join(root, "src", "Alpha", "pbconfig.ts");
@@ -561,7 +561,7 @@ test("bundle verification rejects a FIFO pbconfig instead of skipping the source
   }
 });
 
-test("bundle verification rejects a directory pbconfig instead of skipping the source", async () => {
+void test("bundle verification rejects a directory pbconfig instead of skipping the source", async () => {
   const root = await bundleFixture();
   try {
     const configPath = join(root, "src", "Alpha", "pbconfig.ts");
@@ -582,7 +582,7 @@ test("bundle verification rejects a directory pbconfig instead of skipping the s
   }
 });
 
-test("config-only metadata edits require a version bump", async () => {
+void test("config-only metadata edits require a version bump", async () => {
   const { root, base } = await releaseFixture();
   try {
     await writeFile(
@@ -598,7 +598,7 @@ test("config-only metadata edits require a version bump", async () => {
   }
 });
 
-test("version checks reject a config-only downgrade even without changed-file input", async () => {
+void test("version checks reject a config-only downgrade even without changed-file input", async () => {
   const { root, base } = await releaseFixture({ Alpha: "1.0.0-alpha.2" });
   try {
     await writeSource(root, "Alpha", "1.0.0-alpha.1");
@@ -611,7 +611,7 @@ test("version checks reject a config-only downgrade even without changed-file in
   }
 });
 
-test("version bump verification rejects an oversized historical pbconfig", async () => {
+void test("version bump verification rejects an oversized historical pbconfig", async () => {
   const { root } = await releaseFixture();
   try {
     const configPath = join(root, "src", "Alpha", "pbconfig.ts");
@@ -633,7 +633,7 @@ test("version bump verification rejects an oversized historical pbconfig", async
   }
 });
 
-test("version bumps include both sides of cross-source renames", async () => {
+void test("version bumps include both sides of cross-source renames", async () => {
   const { root, base } = await releaseFixture({
     Alpha: "1.0.0-alpha.1",
     Beta: "1.0.0-alpha.2",
@@ -650,7 +650,7 @@ test("version bumps include both sides of cross-source renames", async () => {
   }
 });
 
-test("an all-zero CI base falls back safely when no parent exists", async () => {
+void test("an all-zero CI base falls back safely when no parent exists", async () => {
   const { root } = await releaseFixture();
   try {
     const result = await verifyVersionBumps({ root, base: "0".repeat(40) });
@@ -660,7 +660,7 @@ test("an all-zero CI base falls back safely when no parent exists", async () => 
   }
 });
 
-test("shared implementation edits require every existing source to advance", async () => {
+void test("shared implementation edits require every existing source to advance", async () => {
   const { root, base } = await releaseFixture({ Alpha: "1.0.0-alpha.1", Beta: "1.0.0-alpha.1" });
   try {
     await mkdir(join(root, "src", "shared"), { recursive: true });
@@ -679,7 +679,7 @@ test("shared implementation edits require every existing source to advance", asy
   }
 });
 
-test("test fixtures and documentation edits do not require a bump", async () => {
+void test("test fixtures and documentation edits do not require a bump", async () => {
   const { root, base } = await releaseFixture();
   try {
     await writeFile(join(root, "src", "Alpha", "reader.test.ts"), "test\n");
@@ -694,7 +694,7 @@ test("test fixtures and documentation edits do not require a bump", async () => 
   }
 });
 
-test("new sources only need a valid semantic version", async () => {
+void test("new sources only need a valid semantic version", async () => {
   const { root, base } = await releaseFixture();
   try {
     await writeSource(root, "NewSource", "1.0.0-alpha.1", { "main.ts": "new\n" });
@@ -705,7 +705,7 @@ test("new sources only need a valid semantic version", async () => {
   }
 });
 
-test("bundle verification accepts source metadata generated from pbconfig", async () => {
+void test("bundle verification accepts source metadata generated from pbconfig", async () => {
   const root = await bundleFixture();
   try {
     const result = await verifyBundles(root);
@@ -715,7 +715,7 @@ test("bundle verification accepts source metadata generated from pbconfig", asyn
   }
 });
 
-test("bundle verification never executes pbconfig side effects or swaps source paths", async () => {
+void test("bundle verification never executes pbconfig side effects or swaps source paths", async () => {
   const root = await bundleFixture();
   const sentinel = join(root, "pbconfig-executed.txt");
   const sourceDirectory = join(root, "src", "Alpha");
@@ -739,7 +739,7 @@ ${original}`,
   }
 });
 
-test("bundle verification rejects a replaced bundles root before opening files", async () => {
+void test("bundle verification rejects a replaced bundles root before opening files", async () => {
   const root = await bundleFixture();
   try {
     const bundleRoot = join(root, "bundles");
@@ -752,7 +752,7 @@ test("bundle verification rejects a replaced bundles root before opening files",
   }
 });
 
-test("safe reads reject a same-path inode-swapped pinned root", async () => {
+void test("safe reads reject a same-path inode-swapped pinned root", async () => {
   const root = await temporaryDirectory();
   try {
     const safeRoot = join(root, "safe-root");
@@ -778,7 +778,7 @@ test("safe reads reject a same-path inode-swapped pinned root", async () => {
   }
 });
 
-test("safe reads require a positive caller-supplied byte limit", async () => {
+void test("safe reads require a positive caller-supplied byte limit", async () => {
   const root = await temporaryDirectory();
   try {
     const safeRoot = join(root, "safe-root");
@@ -801,7 +801,7 @@ test("safe reads require a positive caller-supplied byte limit", async () => {
   }
 });
 
-test("safe reads reject regular files at maxBytes + 1 without unbounded reads", async () => {
+void test("safe reads reject regular files at maxBytes + 1 without unbounded reads", async () => {
   const root = await temporaryDirectory();
   try {
     const safeRoot = join(root, "safe-root");
@@ -822,7 +822,7 @@ test("safe reads reject regular files at maxBytes + 1 without unbounded reads", 
   }
 });
 
-test("safe reads reject FIFOs before open without blocking", async (t) => {
+void test("safe reads reject FIFOs before open without blocking", async (t) => {
   const root = await temporaryDirectory();
   try {
     const safeRoot = join(root, "safe-root");
@@ -856,7 +856,7 @@ test("safe reads reject FIFOs before open without blocking", async (t) => {
   }
 });
 
-test("bundle verification uses the same code-unit ordering for sources and bundles", async () => {
+void test("bundle verification uses the same code-unit ordering for sources and bundles", async () => {
   const root = await bundleFixture({ sourceIds: ["a", "B"] });
   try {
     const result = await verifyBundles(root);
@@ -866,7 +866,7 @@ test("bundle verification uses the same code-unit ordering for sources and bundl
   }
 });
 
-test("bundle verification rejects stale source metadata", async () => {
+void test("bundle verification rejects stale source metadata", async () => {
   const root = await bundleFixture({ infoOverrides: { description: "Old description" } });
   try {
     await assert.rejects(
@@ -878,7 +878,7 @@ test("bundle verification rejects stale source metadata", async () => {
   }
 });
 
-test("bundle verification rejects oversized info metadata before parsing", async () => {
+void test("bundle verification rejects oversized info metadata before parsing", async () => {
   const root = await bundleFixture();
   try {
     const infoPath = join(root, "bundles", "Alpha", "info.json");
@@ -894,7 +894,7 @@ test("bundle verification rejects oversized info metadata before parsing", async
   }
 });
 
-test("version bump verification rejects oversized pbconfig metadata before parsing", async () => {
+void test("version bump verification rejects oversized pbconfig metadata before parsing", async () => {
   const { root, base } = await releaseFixture();
   try {
     const configPath = join(root, "src", "Alpha", "pbconfig.ts");
@@ -909,7 +909,7 @@ test("version bump verification rejects oversized pbconfig metadata before parsi
   }
 });
 
-test("bundle verification rejects mismatched versioning entries", async () => {
+void test("bundle verification rejects mismatched versioning entries", async () => {
   const root = await bundleFixture({ listedOverrides: { version: "1.0.0-alpha.2" } });
   try {
     await assert.rejects(
@@ -921,7 +921,7 @@ test("bundle verification rejects mismatched versioning entries", async () => {
   }
 });
 
-test("bundle verification rejects orphan directories", async () => {
+void test("bundle verification rejects orphan directories", async () => {
   const root = await bundleFixture({ addOrphan: true });
   try {
     await assert.rejects(verifyBundles(root), /Physical bundle\/source mismatch/);
@@ -930,7 +930,7 @@ test("bundle verification rejects orphan directories", async () => {
   }
 });
 
-test("bundle verification rejects directory icons", async () => {
+void test("bundle verification rejects directory icons", async () => {
   const root = await bundleFixture({ icon: "." });
   try {
     await assert.rejects(verifyBundles(root), /regular, non-symlink icon file/);
@@ -939,7 +939,7 @@ test("bundle verification rejects directory icons", async () => {
   }
 });
 
-test("bundle verification rejects symlink icons outside static", async () => {
+void test("bundle verification rejects symlink icons outside static", async () => {
   const root = await bundleFixture({ symlinkIcon: true });
   try {
     await assert.rejects(verifyBundles(root), /regular, non-symlink icon file/);
@@ -948,7 +948,7 @@ test("bundle verification rejects symlink icons outside static", async () => {
   }
 });
 
-test("bundle verification rejects symlink source bundle directories", async () => {
+void test("bundle verification rejects symlink source bundle directories", async () => {
   const root = await bundleFixture();
   try {
     const outside = join(root, "outside-bundle");
@@ -959,7 +959,7 @@ test("bundle verification rejects symlink source bundle directories", async () =
   }
 });
 
-test("bundle verification rejects symlink orphan directories instead of ignoring them", async () => {
+void test("bundle verification rejects symlink orphan directories instead of ignoring them", async () => {
   const root = await bundleFixture();
   try {
     const orphan = join(root, "bundles", "Obsolete");
@@ -971,7 +971,7 @@ test("bundle verification rejects symlink orphan directories instead of ignoring
 });
 
 for (const artifact of ["index.html", "versioning.json"]) {
-  test(`bundle verification rejects a symlink root ${artifact}`, async () => {
+  void test(`bundle verification rejects a symlink root ${artifact}`, async () => {
     const root = await bundleFixture();
     try {
       await replaceWithSymlink(join(root, "bundles", artifact), join(root, `outside-${artifact}`));
@@ -986,7 +986,7 @@ for (const artifact of ["index.html", "versioning.json"]) {
 }
 
 for (const artifact of ["index.js", "info.json"]) {
-  test(`bundle verification rejects a symlink source ${artifact}`, async () => {
+  void test(`bundle verification rejects a symlink source ${artifact}`, async () => {
     const root = await bundleFixture();
     try {
       await replaceWithSymlink(

@@ -20,7 +20,7 @@ const LIST_HTML = `<div>
 </div>
 </div>`;
 
-test("mangaupdates groups list keeps stable IDs, active flags, and contact domains", () => {
+void test("mangaupdates groups list keeps stable IDs, active flags, and contact domains", () => {
   const groups = parseGroupsList(LIST_HTML, "H");
   assert.equal(groups.length, 2);
   assert.equal(groups[0]?.id, "yll7j71");
@@ -33,14 +33,14 @@ test("mangaupdates groups list keeps stable IDs, active flags, and contact domai
   );
 });
 
-test("mangaupdates domain summary ranks scan sites for support decisions", () => {
+void test("mangaupdates domain summary ranks scan sites for support decisions", () => {
   const groups = parseGroupsList(LIST_HTML, "H");
   const summary = summarizeContactDomains(groups);
   assert.equal(summary.length, 2);
   assert.ok(summary.every((entry) => entry.count === 1));
 });
 
-test("mangaupdates group detail keeps external site links and drops internal links", () => {
+void test("mangaupdates group detail keeps external site links and drops internal links", () => {
   const links = parseGroupDetailLinks(
     `<div><a href="https://example-scans.example.com/">Site</a>` +
       `<a href="https://www.mangaupdates.com/group/yll7j71/netascans">Self</a></div>`,

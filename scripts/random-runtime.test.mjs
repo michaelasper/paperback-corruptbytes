@@ -7,8 +7,8 @@ import {
   runBoundedTasks,
 } from "./random-runtime.js";
 
-describe("deterministic random probe runtime", () => {
-  it("gives each source a stable random stream independent of scheduling order", () => {
+void describe("deterministic random probe runtime", () => {
+  void it("gives each source a stable random stream independent of scheduling order", () => {
     const forward = ["Atsumaru", "Diva", "Valir"].map((name) => {
       const random = createDeterministicRandom(deriveDeterministicSeed(42, name));
       return [name, random.integer(1, 1_000), random.integer(1, 1_000)];
@@ -23,7 +23,7 @@ describe("deterministic random probe runtime", () => {
     assert.deepEqual(reverse, forward);
   });
 
-  it("runs jobs within a fixed concurrency budget and retains input ordering", async () => {
+  void it("runs jobs within a fixed concurrency budget and retains input ordering", async () => {
     let active = 0;
     let maximumActive = 0;
     const tasks = [18, 3, 9, 1].map((duration, index) => async () => {
@@ -46,7 +46,7 @@ describe("deterministic random probe runtime", () => {
     );
   });
 
-  it("rejects invalid worker budgets before scheduling work", async () => {
+  void it("rejects invalid worker budgets before scheduling work", async () => {
     await assert.rejects(runBoundedTasks([async () => 1], 0), /concurrency.*positive integer/i);
   });
 });

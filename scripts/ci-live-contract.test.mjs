@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
-test("CI gates every reachable live protocol and isolates only MadaraDex's runner block", async () => {
+void test("CI gates every reachable live protocol and isolates only MadaraDex's runner block", async () => {
   const packageJson = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );

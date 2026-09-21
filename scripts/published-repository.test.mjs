@@ -71,8 +71,8 @@ const publishedFetch = (versions, requested) => async (input) => {
   return response(url, "png", "image/png");
 };
 
-describe("published Paperback repository verification", () => {
-  it("accepts the immutable bundle contract without loading build dependencies", async () => {
+void describe("published Paperback repository verification", () => {
+  void it("accepts the immutable bundle contract without loading build dependencies", async () => {
     const expectedManifest = {
       repository: { name: "Repo" },
       sources: [sourceInfo("Alpha")],
@@ -89,7 +89,7 @@ describe("published Paperback repository verification", () => {
     assert.deepEqual(result.sourceIds, ["Alpha"]);
   });
 
-  it("proves every local source is in the cache-busted manifest with reachable artifacts", async () => {
+  void it("proves every local source is in the cache-busted manifest with reachable artifacts", async () => {
     const root = await bundleRoot({ Alpha: "1.0.0", Beta: "1.0.0" });
     const requested = [];
 
@@ -106,7 +106,7 @@ describe("published Paperback repository verification", () => {
     assert.ok(requested.every((url) => url.endsWith("?release=release-sha")));
   });
 
-  it("rejects a successful deployment whose manifest silently omits a new source", async () => {
+  void it("rejects a successful deployment whose manifest silently omits a new source", async () => {
     const expectedManifest = manifest({ Alpha: "1.0.0", Beta: "1.0.0" });
 
     await assert.rejects(
@@ -120,7 +120,7 @@ describe("published Paperback repository verification", () => {
     );
   });
 
-  it("rejects stale published metadata even when every source ID is present", async () => {
+  void it("rejects stale published metadata even when every source ID is present", async () => {
     await assert.rejects(
       verifyPublishedRepository({
         baseUrl: "https://example.test/repo/",

@@ -15,9 +15,6 @@ const MAX_ENRICH = Math.max(1, Number(flag("max-enrich", "30")) || 30);
 const TOP_N = Math.max(1, Number(flag("top-n", "15")) || 15);
 
 const report = JSON.parse(await readFile("/tmp/rec-report.json", "utf8"));
-const owned = new Set(
-  report.topSeries.flatMap((entry) => entry.titles).map((title) => title.toLowerCase()),
-);
 
 const fetchText = async (url) => {
   const response = await fetch(url, { headers: { "User-Agent": UA } });
@@ -31,7 +28,7 @@ const firstSeriesHit = (html) => {
 };
 
 const genresOf = (html) => {
-  const combined = [...html.matchAll(/\/series\?genre=([A-Za-z_\-]+)"/g)]
+  const combined = [...html.matchAll(/\/series\?genre=([A-Za-z_-]+)"/g)]
     .map((match) => match[1].split("_"))
     .sort((left, right) => right.length - left.length)[0] ?? [];
   return [...new Set(combined)];

@@ -112,7 +112,7 @@ export const parseMangaDetails = (html: string, mangaId: string): SourceManga =>
   const genres = chips.filter((chip) => !chip.startsWith("+"));
   const views = clean(
     $("span, div")
-      .filter((_, element) => /views$/.test(clean($(element).text())))
+      .filter((_, element) => clean($(element).text()).endsWith("views"))
       .first()
       .text(),
   );

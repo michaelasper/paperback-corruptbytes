@@ -16,7 +16,6 @@ import {
   type SourceManga,
 } from "@paperback/types";
 
-import { contentRatingForTags } from "../shared/html.js";
 import { TempleClient } from "./client.js";
 import { TempleCookieInterceptor } from "./cookies.js";
 import { TempleInterceptor } from "./interceptor.js";

@@ -37,6 +37,14 @@ const genresOf = (html) => {
   return [...new Set(combined)];
 };
 
+const categoriesOf = (html) => {
+  const box = html.split('data-cy="info-box-categories"')[1]?.split('data-cy=')[0] ?? "";
+  const tags = [...box.matchAll(/\/series\?category=([^"#]+)"[^>]*>([^<]+)</g)]
+    .map((match) => decodeURIComponent(match[1].replace(/\+/g, " ")).trim())
+    .filter(Boolean);
+  return [...new Set(tags)];
+};
+
 const relatedOf = (html) => {
   const links = [...html.matchAll(/href="(https:\/\/www\.mangaupdates\.com\/series\/[a-z0-9]+\/[^"<>?#\\]+)"/g)]
     .map((match) => match[1]);
@@ -111,7 +119,10 @@ for (const candidate of rankedRelated.slice(0, MAX_ENRICH)) {
     const html = await fetchText(candidate.url);
     await sleep(DELAY_MS);
     const genres = genresOf(html);
-    if (passesGenreFilter(genres)) enriched.push({ ...candidate, genres });
+    const hasFilter = INCLUDE.length > 0 || EXCLUDE.length > 0;
+    if (!hasFilter || passesGenreFilter(genres)) {
+      enriched.push({ ...candidate, genres, categories: categoriesOf(html) });
+    }
   } catch (error) {
     process.stdout.write(`Skip enrich ${candidate.url}: ${String(error)}\n`);
   }
@@ -120,7 +131,7 @@ for (const candidate of rankedRelated.slice(0, MAX_ENRICH)) {
 const out = {
   matched,
   genreFilter: { include: INCLUDE, exclude: EXCLUDE },
-  related: (INCLUDE.length > 0 || EXCLUDE.length > 0 ? enriched : rankedRelated).slice(0, 30),
+  related: (enriched.length > 0 ? enriched : rankedRelated).slice(0, 30),
   groups: [...groupVotes.entries()]
     .map(([url, vote]) => ({ url, votes: Math.round(vote.votes), from: vote.from.slice(0, 3) }))
     .sort((left, right) => right.votes - left.votes)

@@ -40,15 +40,36 @@ for (const chapter of Object.values(chaps)) {
 const ch2sid = new Map();
 for (const [sid, ids] of avail) for (const id of ids) ch2sid.set(id, sid);
 
+const APPLE_EPOCH = 978307200;
+const HALF_LIFE_DAYS = Number(process.env.REC_HALF_LIFE_DAYS ?? 120);
+
 const completedBySeries = new Map();
+const lastActivityBySeries = new Map();
 let completedTotal = 0;
+let newestStamp = 0;
 for (const marker of Object.values(marks)) {
+  if (typeof marker?.time === "number" && marker.time > newestStamp) newestStamp = marker.time;
   if (marker?.completed !== true) continue;
   const cid = marker?.chapter?.id;
   const sid = typeof cid === "string" ? ch2sid.get(cid) : undefined;
   if (!sid) continue;
   completedBySeries.set(sid, (completedBySeries.get(sid) ?? 0) + 1);
   completedTotal += 1;
+  if (typeof marker.time === "number") {
+    lastActivityBySeries.set(sid, Math.max(lastActivityBySeries.get(sid) ?? 0, marker.time));
+  }
+}
+for (const entry of Object.values(lib)) {
+  const stamp = entry?.lastRead;
+  if (typeof stamp !== "number" || stamp <= 0) continue;
+  if (stamp > newestStamp) newestStamp = stamp;
+  for (const attached of entry?.attachedSources ?? []) {
+    if (attached?.type !== "__SOURCE_MANGA_V5" || typeof attached.id !== "string") continue;
+    lastActivityBySeries.set(
+      attached.id,
+      Math.max(lastActivityBySeries.get(attached.id) ?? 0, stamp),
+    );
+  }
 }
 
 const titlesOf = (entry) => {
@@ -66,7 +87,10 @@ for (const [sid, chapters] of avail) {
   const completed = completedBySeries.get(sid) ?? 0;
   if (available === 0) continue;
   const ratio = completed / available;
-  const score = completed * (0.5 + 0.5 * ratio);
+  const lastActivity = lastActivityBySeries.get(sid) ?? 0;
+  const daysAgo = lastActivity > 0 ? Math.max(0, (newestStamp - lastActivity) / 86400) : 365;
+  const recency = 0.5 + 0.5 * Math.exp(-daysAgo / HALF_LIFE_DAYS);
+  const score = completed * (0.5 + 0.5 * ratio) * recency;
   scored.push({
     sourceId: source.sourceId,
     mangaId: source.mangaId,
@@ -75,6 +99,8 @@ for (const [sid, chapters] of avail) {
     available,
     completed,
     ratio: Math.round(ratio * 100) / 100,
+    daysAgo: Math.round(daysAgo),
+    recency: Math.round(recency * 100) / 100,
     score: Math.round(score * 100) / 100,
   });
 }

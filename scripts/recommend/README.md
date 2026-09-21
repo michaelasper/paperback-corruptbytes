@@ -9,7 +9,10 @@ node scripts/recommend/score-backup.mjs --backup=/path/to/Paperback-Archive.pas5
 ```
 
 Reads the library, tracked series, series info, chapters, and progress
-markers. Scores each series as completed times a completion ratio bonus.
+markers. Scores each series as completed times a completion ratio bonus
+times a recency factor. Recency uses the latest read or marker stamp per
+series with exponential decay. Half life defaults to 120 days and can be
+set with REC_HALF_LIFE_DAYS. Each entry reports daysAgo and recency.
 Writes the top series plus a tag profile to stdout.
 
 ## Match against MangaUpdates

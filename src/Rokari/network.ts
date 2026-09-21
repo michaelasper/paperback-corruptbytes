@@ -43,6 +43,9 @@ export const buildCatalogUrl = (order: "update" | "popular" = "update"): string 
 export const buildSearchUrl = (term: string): string =>
   `${DOMAIN}/?s=${encodeURIComponent(term.trim())}`;
 
+export const buildGenreUrl = (slug: string): string =>
+  `${DOMAIN}/genres/${routeComponent(slug, "genre ID")}/`;
+
 export const parseMangaUrl = (value: string): string | undefined => {
   const match = value
     .trim()

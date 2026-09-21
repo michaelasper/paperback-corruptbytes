@@ -4,6 +4,11 @@ export const ROKARI_CATALOG_HTML = `<!DOCTYPE html><html><body>
 <div><a href="https://rokaricomics.com/bunker-days-chapter-38/">Chapter 38</a></div>
 </body></html>`;
 
+export const ROKARI_GENRE_HTML = `<!DOCTYPE html><html><body>
+<div><a title="Bunker Days" href="https://rokaricomics.com/manga/bunker-days/"><div><img src="https://rokaricomics.com/wp-content/uploads/2026/01/bunker.webp"><p>Bunker Days</p></div></a></div>
+<div><a title="Garden of May" href="https://rokaricomics.com/manga/garden-of-may/"><div><img src="https://rokaricomics.com/wp-content/uploads/2026/02/garden.webp"><p>Garden of May</p></div></a></div>
+</body></html>`;
+
 export const ROKARI_SERIES_HTML = `<!DOCTYPE html><html><head><title>Bunker Days &#8211; rokari comics</title>
 <meta property="og:image" content="https://rokaricomics.com/wp-content/uploads/2026/01/bunker-cover.webp">
 <meta name="description" content="Seo-woo rejected Won-hyeok as a child and now hides in an abandoned bunker with a long and dangerous history.">

@@ -4,7 +4,7 @@ export default {
   name: "Rokari Comics",
   description:
     "Rokari Comics manhwa with fast catalog search, complete inline chapter lists, and direct image readers.",
-  version: "1.0.0-alpha.2",
+  version: "1.0.0-alpha.3",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.ADULT,

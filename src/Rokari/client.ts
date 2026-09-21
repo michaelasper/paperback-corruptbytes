@@ -13,6 +13,7 @@ import {
   DOMAIN,
   buildCatalogUrl,
   buildChapterUrl,
+  buildGenreUrl,
   buildMangaUrl,
   buildSearchUrl,
   fetchText,
@@ -92,9 +93,14 @@ export class RokariClient {
   async getFilterOptions(): Promise<RokariFilterOptions> {
     return this.filterCache.getMapped(
       "filters",
-      () => fetchText({ url: `${DOMAIN}/genres/`, method: "GET" }),
+      () => fetchText({ url: buildCatalogUrl("update"), method: "GET" }),
       parseFilterOptions,
     );
+  }
+
+  async getGenrePage(slug: string): Promise<RokariCatalogPage> {
+    const url = buildGenreUrl(slug);
+    return this.catalogCache.getMapped(url, () => fetchText({ url, method: "GET" }), parseCatalogCards);
   }
 
   async getMangaDetails(mangaId: string): Promise<SourceManga> {

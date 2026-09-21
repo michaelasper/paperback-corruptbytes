@@ -15,6 +15,7 @@ import {
   ROKARI_CATALOG_HTML,
   ROKARI_CHAPTER_HTML,
   ROKARI_EMPTY_CHAPTER_HTML,
+  ROKARI_GENRE_HTML,
   ROKARI_SERIES_HTML,
 } from "./test-fixtures.js";
 
@@ -48,6 +49,12 @@ describe("Rokari catalog parsing", () => {
       filters.genres.map((genre) => genre.id),
       ["drama", "martial-arts"],
     );
+  });
+
+  it("reads series cards from genre archives", () => {
+    const page = parseCatalogCards(ROKARI_GENRE_HTML);
+    assert.equal(page.items.length, 2);
+    assert.equal(page.items[0]?.mangaId, "bunker-days");
   });
 });
 

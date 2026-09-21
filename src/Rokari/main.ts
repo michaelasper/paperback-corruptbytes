@@ -28,6 +28,7 @@ import { RokariSettingsForm } from "./settings.js";
 
 export interface RokariClientContract {
   getCatalogPage(order?: "update" | "popular"): Promise<RokariCatalogPage>;
+  getGenrePage(slug: string): Promise<RokariCatalogPage>;
   searchComics(term: string): Promise<RokariCatalogPage>;
   getFilterOptions(): Promise<{ genres: { id: string; title: string }[] }>;
   getMangaDetails(mangaId: string): Promise<SourceManga>;
@@ -153,6 +154,10 @@ export class RokariExtension implements ExtensionImpl<typeof RokariConfig> {
     if (pasted) return pasted;
     const term = query.title?.trim() ?? "";
     if ((metadata?.page ?? 1) > 1) return { items: [] };
+    const genres = query.metadata?.genres ?? [];
+    if (!term && genres.length > 0 && genres[0]) {
+      return { items: searchItems(await this.client.getGenrePage(genres[0])) };
+    }
     if (!term) {
       return { items: searchItems(await this.client.getCatalogPage("update")) };
     }

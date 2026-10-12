@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 
 import { ContentRating, type Request, type Response as PaperbackResponse } from "@paperback/types";
+import { load } from "cheerio";
 
 import { AtsumaruClient, CANONICAL_MANGA_ID_KEY } from "./client.js";
 import type { AtsumaruHomeFeed } from "./models.js";
@@ -10,7 +11,7 @@ import {
   buildAllChaptersUrl,
   buildChapterUrl,
   buildHomeUrl,
-  buildMangaDocumentUrl,
+  buildMangaRatingUrl,
   buildMangaPageUrl,
   buildNovelChapterUrl,
   buildSearchUrl,
@@ -22,7 +23,7 @@ import {
   parseComicChapter,
   parseFeedResponse,
   parseMangaPage,
-  parseMangaRatingDocument,
+  parseMangaRatingResponse,
   parseNovelChapter,
   parseScanlators,
   parseSearchResponse,
@@ -30,6 +31,7 @@ import {
 
 const live = process.env.ATSUMARU_LIVE_TESTS === "1";
 const originalApplication = globalThis.Application;
+const rawResponses = new Map<string, ArrayBuffer>();
 const userAgent = "Mozilla/5.0 PaperbackExtensionLiveContract/1.0";
 
 if (live) {
@@ -44,6 +46,8 @@ if (live) {
           redirect: "follow",
           signal: AbortSignal.timeout(30_000),
         });
+        const body = await response.arrayBuffer();
+        rawResponses.set(request.url, body);
         return [
           {
             url: response.url,
@@ -51,7 +55,7 @@ if (live) {
             headers: Object.fromEntries(response.headers.entries()),
             cookies: [],
           },
-          await response.arrayBuffer(),
+          body,
         ];
       },
     },
@@ -74,6 +78,42 @@ const getCachedJson = (url: string): Promise<unknown> => {
   });
   jsonCache.set(url, pending);
   return pending;
+};
+
+const rawResponse = (url: string): unknown => {
+  const body = rawResponses.get(url);
+  assert.ok(body, `No captured response for ${url}`);
+  return JSON.parse(new TextDecoder().decode(body)) as unknown;
+};
+
+const record = (value: unknown): Record<string, unknown> => {
+  assert.ok(value !== null && typeof value === "object" && !Array.isArray(value));
+  return value as Record<string, unknown>;
+};
+
+const assertImage = async (url: string): Promise<void> => {
+  assert.equal(new URL(url).origin, "https://cdn.atsu.moe");
+  const response = await fetch(url, {
+    headers: { "user-agent": userAgent },
+    redirect: "error",
+    signal: AbortSignal.timeout(30_000),
+  });
+  assert.ok(response.body);
+  const reader = response.body.getReader();
+  let bytes = 0;
+  try {
+    assert.equal(response.status, 200, url);
+    assert.match(response.headers.get("content-type") ?? "", /^image\//);
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      bytes += chunk.value.byteLength;
+      assert.ok(bytes <= 2 * 1024 * 1024, `${url} exceeds the 2 MiB image probe budget`);
+    }
+    assert.ok(bytes > 0, `${url} returned an empty image`);
+  } finally {
+    await reader.cancel();
+  }
 };
 
 const HOME_FEEDS: AtsumaruHomeFeed[] = [
@@ -172,16 +212,17 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
       ["DJqV8", ContentRating.ADULT],
       ["-aOD", ContentRating.EVERYONE],
     ] as const) {
-      const [pageValue, ratingValue] = await Promise.all([
-        getCachedJson(buildMangaPageUrl(mangaId)),
-        getCachedJson(buildMangaDocumentUrl(mangaId)),
-      ]);
-      const rating = parseMangaRatingDocument(ratingValue, mangaId);
-      assert.ok(rating, `${mangaId} returned a mismatched rating document`);
+      const ratingValue = await fetchJson(
+        { url: buildMangaRatingUrl(mangaId), method: "GET" },
+        { maxBytes: 1_024 },
+      );
+      const rating = parseMangaRatingResponse(ratingValue, mangaId);
+      assert.equal(rating?.id, mangaId);
+      const details = await new AtsumaruClient().getMangaDetails(mangaId);
       assert.equal(
-        parseMangaPage(pageValue, mangaId, rating).mangaInfo.contentRating,
+        details.mangaInfo.contentRating,
         expected,
-        `${mangaId} detail rating diverged from Atsumaru's index`,
+        `${mangaId} production detail rating diverged from Atsumaru's index`,
       );
     }
   });
@@ -291,17 +332,163 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
     });
 
     const chapters = await client.getChapters(legacy, undefined, false);
-    const expectedCount = Number(current.mangaInfo.additionalInfo?.chapters);
-
-    assert.ok(Number.isSafeInteger(expectedCount) && expectedCount > 0);
-    assert.equal(chapters.length, expectedCount);
-    assert.equal(Math.max(...chapters.map(({ chapNum }) => chapNum)), expectedCount);
+    current.mangaInfo.additionalInfo = {
+      ...current.mangaInfo.additionalInfo,
+      [CANONICAL_MANGA_ID_KEY]: currentMangaId,
+    };
+    const canonical = await client.getChapters(current, undefined, false);
+    assert.ok(canonical.length > 0);
+    assert.deepEqual(
+      chapters.map(({ chapterId }) => chapterId),
+      canonical.map(({ chapterId }) => chapterId),
+    );
     assert.ok(chapters.every(({ sourceManga }) => sourceManga.mangaId === "legacy-68Fv"));
     assert.ok(
       chapters.every(
         ({ additionalInfo }) => additionalInfo?.[CANONICAL_MANGA_ID_KEY] === currentMangaId,
       ),
     );
+  });
+
+  it("retains raw chapter IDs, order and reader content across four bounded series", async (context) => {
+    const client = new AtsumaruClient();
+    for (const mangaId of ["68Fv", "N7JpR", "oJQ4o", "-aOD"]) {
+      const manga = await client.getMangaDetails(mangaId);
+      const chapters = await client.getChapters(manga, undefined, true);
+      const raw = record(rawResponse(buildAllChaptersUrl(mangaId))).chapters;
+      assert.ok(Array.isArray(raw) && raw.length > 0 && raw.length <= 20_000);
+      const rawChapters = raw.map((value: unknown) => {
+        const item = record(value);
+        assert.ok(typeof item.id === "string" && item.id.length > 0);
+        assert.ok(typeof item.number === "number" && Number.isFinite(item.number));
+        assert.ok(
+          typeof item.index === "number" && Number.isSafeInteger(item.index) && item.index >= 0,
+        );
+        assert.ok(typeof item.createdAt === "number" && Number.isSafeInteger(item.createdAt));
+        return {
+          id: item.id,
+          number: item.number,
+          index: item.index,
+          createdAt: item.createdAt,
+        };
+      });
+      const rawById = new Map(rawChapters.map((item) => [item.id, item]));
+      assert.equal(
+        rawById.size,
+        rawChapters.length,
+        `${mangaId} has duplicate raw IDs requiring review`,
+      );
+      assert.deepEqual(
+        new Set(chapters.map(({ chapterId }) => decodeURIComponent(chapterId))),
+        new Set(rawById.keys()),
+      );
+      assert.equal(chapters.length, rawById.size);
+      assert.deepEqual(
+        chapters.map(({ sortingIndex }) => sortingIndex),
+        chapters.map((_, index) => index),
+      );
+      for (const [index, chapter] of chapters.entries()) {
+        const current = rawById.get(decodeURIComponent(chapter.chapterId));
+        assert.ok(current);
+        assert.equal(chapter.chapNum, current.number);
+        if (index === 0) continue;
+        const previousChapter = chapters[index - 1];
+        assert.ok(previousChapter);
+        const previous = rawById.get(decodeURIComponent(previousChapter.chapterId));
+        assert.ok(previous);
+        assert.ok(
+          current.number > previous.number ||
+            (current.number === previous.number &&
+              (current.index > previous.index ||
+                (current.index === previous.index && current.createdAt >= previous.createdAt))),
+          `${mangaId} raw ordering changed`,
+        );
+      }
+      const since = await client.getChapters(manga, new Date(), true);
+      assert.deepEqual(
+        since.map(({ chapterId }) => chapterId),
+        chapters.map(({ chapterId }) => chapterId),
+      );
+      const collapsed = await client.getChapters(manga, undefined, false);
+      assert.deepEqual(
+        new Set(collapsed.map(({ chapNum }) => chapNum)),
+        new Set(rawChapters.map(({ number }) => number)),
+      );
+      assert.equal(collapsed.length, new Set(rawChapters.map(({ number }) => number)).size);
+
+      let pages = 0;
+      let paragraphs = 0;
+      let images = 0;
+      for (const index of new Set([0, Math.floor(chapters.length / 2), chapters.length - 1])) {
+        const chapter = chapters[index];
+        assert.ok(chapter);
+        const details = await client.getChapterDetails(chapter);
+        assert.equal(details.id, chapter.chapterId);
+        assert.equal(details.mangaId, mangaId);
+        if ("pages" in details) {
+          const reader = record(
+            record(rawResponse(buildChapterUrl(mangaId, chapter.chapterId))).readChapter,
+          );
+          const rawPages = reader.pages;
+          assert.ok(Array.isArray(rawPages) && rawPages.length > 0 && rawPages.length <= 10_000);
+          const ordered = rawPages
+            .map((value: unknown) => {
+              const page = record(value);
+              assert.ok(typeof page.number === "number" && Number.isFinite(page.number));
+              assert.ok(typeof page.image === "string");
+              assert.match(page.image, /^\/static\/pages\/(?:[A-Za-z0-9_-]+\/)+[A-Za-z0-9_.-]+$/);
+              return { number: page.number, url: new URL(page.image, "https://cdn.atsu.moe").href };
+            })
+            .sort((left, right) => left.number - right.number);
+          assert.deepEqual(details.pages, [...new Set(ordered.map(({ url }) => url))]);
+          pages += ordered.length;
+          for (const imageIndex of new Set([0, details.pages.length - 1])) {
+            const image: string | undefined = details.pages[imageIndex];
+            assert.ok(image);
+            await assertImage(image);
+            images += 1;
+          }
+        } else {
+          assert.equal(details.type, "html");
+          const reader = record(
+            record(rawResponse(buildNovelChapterUrl(mangaId, chapter.chapterId))).readNovelChapter,
+          );
+          const rawParagraphs = reader.paragraphs;
+          assert.ok(
+            Array.isArray(rawParagraphs) &&
+              rawParagraphs.length > 0 &&
+              rawParagraphs.length <= 4_096,
+          );
+          const expected = rawParagraphs
+            .map((value: unknown) => {
+              assert.ok(typeof value === "string" && value.length <= 100_000);
+              return value.trim().replace(/\r\n/g, "\n");
+            })
+            .filter(Boolean);
+          assert.ok(expected.join("").length <= 1_000_000);
+          const $ = load(details.html, { xml: true });
+          $("br").replaceWith("\n");
+          assert.deepEqual(
+            $("p")
+              .toArray()
+              .map((element) => $(element).text()),
+            expected,
+          );
+          assert.equal($("script").length, 0);
+          paragraphs += expected.length;
+        }
+      }
+      context.diagnostic(
+        JSON.stringify({
+          mangaId,
+          rawChapters: rawChapters.length,
+          retained: chapters.length,
+          pages,
+          paragraphs,
+          images,
+        }),
+      );
+    }
   });
 
   it("reads a page-zero nested comic chapter and its direct CDN image", async () => {
@@ -327,12 +514,7 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
       "page zero did not retain its nested CDN path",
     );
 
-    const response = await fetch(details.pages[0]!, {
-      headers: { "user-agent": userAgent },
-      signal: AbortSignal.timeout(30_000),
-    });
-    assert.equal(response.ok, true, `${response.status} from ${response.url}`);
-    assert.match(response.headers.get("content-type") ?? "", /^image\//);
+    await assertImage(details.pages[0]!);
   });
 
   it("reads the public novel fixtures as escaped XHTML", async () => {

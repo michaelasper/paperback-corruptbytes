@@ -3,6 +3,7 @@ import { afterEach, describe, it } from "node:test";
 
 import type { Request, Response } from "@paperback/types";
 
+import { CloudflareError } from "../shared/http.js";
 import {
   CDN_DOMAIN,
   DOMAIN,
@@ -11,7 +12,7 @@ import {
   buildAllChaptersUrl,
   buildChapterUrl,
   buildHomeUrl,
-  buildMangaDocumentUrl,
+  buildMangaRatingUrl,
   buildMangaPageUrl,
   buildNovelChapterUrl,
   buildSearchRequest,
@@ -197,8 +198,8 @@ describe("Atsumaru network boundaries", () => {
     }
     assert.equal(buildMangaPageUrl("dark-%7E-mage"), `${DOMAIN}/api/manga/page?id=dark-%7E-mage`);
     assert.equal(
-      buildMangaDocumentUrl("dark-%7E-mage"),
-      `${DOMAIN}/collections/manga/documents/dark-%7E-mage?include_fields=id%2CmbContentRating%2CisAdult`,
+      buildMangaRatingUrl("dark-%7E-mage"),
+      `${DOMAIN}/collections/manga/documents/search?q=%2A&query_by=title&filter_by=id%3A%3D%60dark-%7E-mage%60%20%26%26%20hidden%3A%21%3Dtrue&include_fields=id%2CmbContentRating%2CisAdult&per_page=1&page=1`,
     );
 
     for (const bad of [
@@ -216,12 +217,25 @@ describe("Atsumaru network boundaries", () => {
       "x".repeat(257),
     ]) {
       assert.throws(() => buildMangaPageUrl(bad), /invalid/i);
-      assert.throws(() => buildMangaDocumentUrl(bad), /invalid/i);
+      assert.throws(() => buildMangaRatingUrl(bad), /invalid/i);
       assert.equal(parseMangaUrl(`${DOMAIN}/manga/${encodeURIComponent(bad)}`), undefined);
     }
     assert.equal(parseMangaUrl("https://atsu.moe.evil.test/manga/h4j-gl"), undefined);
     assert.equal(parseMangaUrl("https://user:pass@atsu.moe/manga/h4j-gl"), undefined);
     assert.equal(parseMangaUrl("https://atsu.moe/manga/h4j-gl/extra"), undefined);
+  });
+
+  it("projects only exact escaped ID ratings without browse filters", () => {
+    const url = new URL(buildMangaRatingUrl("a%60%7C%7CisAdult%3A%3Dfalse"));
+    assert.equal(url.pathname, "/collections/manga/documents/search");
+    assert.deepEqual(Object.fromEntries(url.searchParams), {
+      q: "*",
+      query_by: "title",
+      filter_by: "id:=`a\\`||isAdult:=false` && hidden:!=true",
+      include_fields: "id,mbContentRating,isAdult",
+      per_page: "1",
+      page: "1",
+    });
   });
 
   it("builds chapter endpoints for manga and novel routes", () => {
@@ -318,6 +332,29 @@ describe("Atsumaru response handling", () => {
         (error: unknown) => !(error instanceof Error && error.message.includes("secret body")),
       );
     }
+  });
+
+  it("reports ordinary app-shell HTML truthfully and preserves actual challenge errors", async () => {
+    install(200, '<html><title>Atsumaru</title><div id="root"></div></html>', {
+      "content-type": "text/html",
+      server: "cloudflare",
+    });
+    await assert.rejects(fetchJson({ url: `${DOMAIN}/api`, method: "GET" }), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, "Atsumaru returned HTML instead of JSON.");
+      assert.ok(!(error instanceof CloudflareError));
+      return true;
+    });
+    const challenge = new CloudflareError({ url: `${DOMAIN}/`, method: "GET" });
+    Object.assign(globalThis.Application, {
+      scheduleRequest: async () => {
+        throw challenge;
+      },
+    });
+    await assert.rejects(
+      fetchJson({ url: `${DOMAIN}/api`, method: "GET" }),
+      (error: unknown) => error === challenge,
+    );
   });
 
   it("caps untrusted response bytes before decoding and permits explicit chapter limits", async () => {

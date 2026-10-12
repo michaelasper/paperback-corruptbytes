@@ -315,15 +315,30 @@ const contentRatingFromMbValue = (value: unknown): ContentRating | undefined => 
   }
 };
 
-/** Parse and verify the reduced Typesense document used for detail ratings. */
-export const parseMangaRatingDocument = (
+export const parseMangaRatingResponse = (
   value: unknown,
   requestedId: string,
-): AtsumaruRatingDocument | undefined => {
-  const record = asRecord(value);
+): AtsumaruRatingDocument | null => {
+  const envelope = asRecord(value);
+  if (
+    !envelope ||
+    envelope.search_cutoff !== false ||
+    envelope.page !== 1 ||
+    !Number.isSafeInteger(envelope.found) ||
+    !Array.isArray(envelope.hits)
+  ) {
+    throw new Error("Atsumaru returned an invalid rating search response.");
+  }
+  if (envelope.found === 0 && envelope.hits.length === 0) return null;
+  if (envelope.found !== 1 || envelope.hits.length !== 1) {
+    throw new Error("Atsumaru returned inconsistent rating search counts.");
+  }
+  const record = asRecord(asRecord(envelope.hits[0])?.document);
   const responseId = opaqueId(record?.id);
   const requested = apiIdFromPaperback(requestedId);
-  if (!responseId || !requested || responseId !== requested) return undefined;
+  if (!responseId || !requested || responseId !== requested) {
+    throw new Error("Atsumaru rating search identity was invalid.");
+  }
   const isAdult = booleanValue(record?.isAdult);
   const mbContentRating = rawText(record?.mbContentRating, MAX_TITLE_LENGTH);
   return {
@@ -665,12 +680,17 @@ export const parseMangaPage = (
   if (released) additionalInfo.year = String(released.getUTCFullYear());
   if (views) additionalInfo.views = views;
   if (totalChapterCount !== undefined) additionalInfo.chapters = String(totalChapterCount);
+  const pageRating = contentRatingForAtsumaru(page);
+  const indexRating = authoritativeContentRating(ratingDocument);
   const mangaInfo: SourceManga["mangaInfo"] = {
     primaryTitle: validPrimaryTitle,
     secondaryTitles: uniqueTitles(validPrimaryTitle, secondaryValues),
     thumbnailUrl: imageFrom(validPoster, ["mediumImage", "largeImage", "image", "smallImage"]),
     synopsis: synopsisMarkup ? plainTextFromHtml(synopsisMarkup) : "",
-    contentRating: authoritativeContentRating(ratingDocument) ?? contentRatingForAtsumaru(page),
+    contentRating:
+      pageRating === ContentRating.ADULT || indexRating === ContentRating.ADULT
+        ? ContentRating.ADULT
+        : (indexRating ?? pageRating),
     contentType: /^novel$/i.test(validMedium) ? "novel" : "comic",
     shareUrl: `${SITE_ORIGIN}/${/^novel$/i.test(validMedium) ? "novel" : "manga"}/${validResponseId}`,
     additionalInfo,

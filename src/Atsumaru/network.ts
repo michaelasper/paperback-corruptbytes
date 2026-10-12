@@ -42,8 +42,6 @@ export const ALL_CHAPTERS_URL = `${DOMAIN}/api/manga/allChapters`;
 export const READ_CHAPTER_URL = `${DOMAIN}/api/read/chapter`;
 export const READ_NOVEL_CHAPTER_URL = `${DOMAIN}/api/read/novelChapter`;
 export const TYPESENSE_MANGA_URL = `${DOMAIN}/collections/manga/documents/search`;
-export const TYPESENSE_MANGA_DOCUMENTS_URL = `${DOMAIN}/collections/manga/documents`;
-/** The direct rating document is deliberately kept far below the general metadata cap. */
 export const MANGA_RATING_MAX_BYTES = 1_024;
 
 const SEARCH_FIELDS =
@@ -160,10 +158,14 @@ export const parseSeriesUrl = parseMangaUrl;
 export const buildMangaPageUrl = (mangaId: string): string =>
   `${MANGA_PAGE_URL}?${queryString([["id", queryId(mangaId, "manga ID")]])}`;
 
-/** Build the reduced Typesense document lookup used for authoritative ratings. */
-export const buildMangaDocumentUrl = (mangaId: string): string =>
-  `${TYPESENSE_MANGA_DOCUMENTS_URL}/${routeComponent(mangaId, "manga ID")}?${queryString([
+export const buildMangaRatingUrl = (mangaId: string): string =>
+  `${TYPESENSE_MANGA_URL}?${queryString([
+    ["q", "*"],
+    ["query_by", "title"],
+    ["filter_by", `id:=${typesenseLiteral(queryId(mangaId, "manga ID"))} && hidden:!=true`],
     ["include_fields", MANGA_RATING_FIELDS],
+    ["per_page", 1],
+    ["page", 1],
   ])}`;
 
 export const buildAvailableFiltersUrl = (): string => AVAILABLE_FILTERS_URL;
@@ -539,12 +541,6 @@ export const fetchText = async (request: Request, options?: FetchOptions): Promi
   return fetchSourceText(request, sourceOptions(options));
 };
 
-const looksLikeChallengeHtml = (body: string): boolean =>
-  /<\s*(?:!doctype\s+html|html|head|body|title)\b/i.test(body) &&
-  /just a moment|checking your browser|verify you are human|cloudflare|challenge-platform/i.test(
-    body,
-  );
-
 const sanitizeFailureDetail = (value: string): string => {
   let result = "";
   for (const character of value) {
@@ -602,12 +598,6 @@ export const fetchJson = async <T = unknown>(
     value = await fetchSourceJson<T>(request, sourceOptions(options));
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    if (/returned HTML instead of JSON/i.test(message) || looksLikeChallengeHtml(message)) {
-      throw new Error(
-        `Atsumaru returned a Cloudflare HTML challenge instead of JSON for ${context}.`,
-        { cause: error },
-      );
-    }
     if (/returned invalid JSON/i.test(message)) {
       throw new Error(`Atsumaru returned invalid JSON for ${context}.`, { cause: error });
     }

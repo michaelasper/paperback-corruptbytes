@@ -272,3 +272,10 @@ export const NOVEL_CHAPTER_RESPONSE = {
     wordCount: 4,
   },
 };
+
+export const ratingResponse = (document: unknown = null) => ({
+  found: document === null ? 0 : 1,
+  hits: document === null ? [] : [{ document }],
+  page: 1,
+  search_cutoff: false,
+});

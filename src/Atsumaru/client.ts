@@ -10,7 +10,6 @@ import type {
 } from "@paperback/types";
 
 import { AsyncKeyedCache, utf8ByteLength } from "../shared/async-cache.js";
-import { SourceHttpError } from "../shared/http.js";
 import type {
   AtsumaruCatalogPage,
   AtsumaruDiscoveryPreferences,
@@ -25,7 +24,7 @@ import {
   buildAllChaptersUrl,
   buildChapterUrl,
   buildHomeUrl,
-  buildMangaDocumentUrl,
+  buildMangaRatingUrl,
   buildMangaPageUrl,
   buildNovelChapterUrl,
   buildSearchUrl,
@@ -41,7 +40,7 @@ import {
   parseComicChapter,
   parseFeedResponse,
   parseMangaPage,
-  parseMangaRatingDocument,
+  parseMangaRatingResponse,
   parseNovelChapter,
   parseScanlators,
   parseSearchResponse,
@@ -250,9 +249,6 @@ const ratingWeight = (value: AtsumaruRatingDocument | null): number => {
   );
 };
 
-const isMissingDocumentError = (error: unknown): boolean =>
-  error instanceof SourceHttpError && error.status === 404;
-
 export class AtsumaruClient {
   private readonly filtersCache = new AsyncKeyedCache<"filters", AtsumaruFilterOptions>({
     ttlMs: 30 * 60_000,
@@ -358,26 +354,14 @@ export class AtsumaruClient {
   }
 
   private getMangaRatingValue(mangaId: string): Promise<AtsumaruRatingDocument | null> {
-    const url = buildMangaDocumentUrl(mangaId);
+    const url = buildMangaRatingUrl(mangaId);
     const result = this.ratingCache.get(url, async () => {
-      try {
-        const body = await this.transport.fetchText(
-          { url, method: "GET" },
-          { maxBytes: MANGA_RATING_MAX_BYTES },
-        );
-        const parsed = parseMangaRatingDocument(decodeJson(body), mangaId);
-        if (!parsed) throw new Error("Atsumaru rating document identity was invalid.");
-        return parsed;
-      } catch (error: unknown) {
-        // A direct document 404 is a stable absence and is safe to retain.
-        // Other transport failures reject the cache entry and remain retryable.
-        if (isMissingDocumentError(error)) return null;
-        throw error;
-      }
+      const body = await this.transport.fetchText(
+        { url, method: "GET" },
+        { maxBytes: MANGA_RATING_MAX_BYTES },
+      );
+      return parseMangaRatingResponse(decodeJson(body), mangaId);
     });
-    // The rating lookup is auxiliary: any non-404 failure falls back to the
-    // page result. AsyncKeyedCache evicts rejected loaders, so outages remain
-    // retryable rather than becoming cached absences.
     return result.catch(() => null);
   }
 

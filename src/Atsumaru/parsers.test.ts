@@ -10,13 +10,14 @@ import {
   contentRatingForAtsumaru,
   parseFeedResponse,
   parseMangaPage,
-  parseMangaRatingDocument,
+  parseMangaRatingResponse,
   parseNovelChapter,
   parseScanlators,
   parseSearchResponse,
   normalizeAtsumaruImage,
 } from "./parsers.js";
 import {
+  ratingResponse,
   AVAILABLE_FILTERS_RESPONSE,
   CHAPTERS_RESPONSE,
   COMIC_CHAPTER_RESPONSE,
@@ -218,12 +219,12 @@ describe("Atsumaru manga and chapter parsers", () => {
           ...("tags" in testCase && { tags: testCase.tags }),
         },
       };
-      const rating = parseMangaRatingDocument(
-        {
+      const rating = parseMangaRatingResponse(
+        ratingResponse({
           id: testCase.id,
           isAdult: testCase.isAdult,
           mbContentRating: testCase.mbContentRating,
-        },
+        }),
         testCase.id,
       );
       assert.ok(rating);
@@ -245,7 +246,10 @@ describe("Atsumaru manga and chapter parsers", () => {
         tags: [{ id: "15", name: "Mature Male Lead", namePath: "Character Traits > Age" }],
       },
     };
-    const missing = parseMangaRatingDocument({ id: "-aOD", isAdult: false }, "-aOD");
+    const missing = parseMangaRatingResponse(
+      ratingResponse({ id: "-aOD", isAdult: false }),
+      "-aOD",
+    );
     assert.ok(missing);
     assert.equal(
       parseMangaPage(page, "-aOD", missing).mangaInfo.contentRating,
@@ -260,9 +264,13 @@ describe("Atsumaru manga and chapter parsers", () => {
       }),
       ContentRating.MATURE,
     );
-    assert.equal(
-      parseMangaRatingDocument({ id: "other", mbContentRating: "Pornographic" }, "-aOD"),
-      undefined,
+    assert.throws(
+      () =>
+        parseMangaRatingResponse(
+          ratingResponse({ id: "other", mbContentRating: "Pornographic" }),
+          "-aOD",
+        ),
+      /rating/i,
     );
   });
 
@@ -669,5 +677,95 @@ describe("Atsumaru manga and chapter parsers", () => {
         ),
       /mismatch/i,
     );
+  });
+});
+
+describe("Atsumaru exact rating search boundary", () => {
+  it("accepts only completed same-ID results or completed zero-hit absence", () => {
+    assert.deepEqual(
+      parseMangaRatingResponse(
+        ratingResponse({ id: "dark-~-mage", isAdult: false, mbContentRating: "Safe" }),
+        "dark-%7E-mage",
+      ),
+      { id: "dark-~-mage", isAdult: false, mbContentRating: "Safe" },
+    );
+    assert.equal(parseMangaRatingResponse(ratingResponse(), "2VgNt"), null);
+    assert.deepEqual(parseMangaRatingResponse(ratingResponse({ id: "2VgNt" }), "2VgNt"), {
+      id: "2VgNt",
+    });
+    const valid = ratingResponse({ id: "2VgNt", mbContentRating: "Safe" });
+    for (const invalid of [
+      null,
+      [],
+      {},
+      { id: "2VgNt" },
+      { ...valid, found: -1 },
+      { ...valid, found: 0.5 },
+      { ...valid, found: Number.MAX_SAFE_INTEGER + 1 },
+      { ...valid, found: 2 },
+      { ...valid, found: "1" },
+      { ...valid, found: 0 },
+      { ...valid, hits: [] },
+      { ...valid, hits: [...valid.hits, ...valid.hits] },
+      { ...valid, hits: [null] },
+      { ...valid, hits: [{}] },
+      { ...valid, page: 2 },
+      { ...valid, page: "1" },
+      { ...valid, page: undefined },
+      { ...valid, search_cutoff: true },
+      { ...valid, search_cutoff: undefined },
+      { ...ratingResponse(), search_cutoff: true },
+      ratingResponse({ id: "2vgnt" }),
+      ratingResponse({ id: "../2VgNt" }),
+      ratingResponse({ id: "different" }),
+    ])
+      assert.throws(() => parseMangaRatingResponse(invalid, "2VgNt"), /rating/i);
+  });
+
+  it("keeps ADULT evidence from either page or index above conflicting lower ratings", () => {
+    for (const adultPage of [
+      { isAdult: true },
+      { mbContentRating: "Erotica" },
+      { contentRating: "Pornographic" },
+      { classification: "Adult" },
+    ]) {
+      for (const mbContentRating of ["Safe", "Suggestive"]) {
+        const page = { mangaPage: { ...MANGA_PAGE_RESPONSE.mangaPage, ...adultPage } };
+        assert.equal(
+          parseMangaPage(page, "oJQ4o", { id: "oJQ4o", isAdult: false, mbContentRating }).mangaInfo
+            .contentRating,
+          ContentRating.ADULT,
+        );
+      }
+    }
+    assert.equal(
+      parseMangaPage(MANGA_PAGE_RESPONSE, "oJQ4o", {
+        id: "oJQ4o",
+        isAdult: true,
+        mbContentRating: "Safe",
+      }).mangaInfo.contentRating,
+      ContentRating.ADULT,
+    );
+    assert.equal(
+      parseMangaPage(MANGA_PAGE_RESPONSE, "oJQ4o", {
+        id: "oJQ4o",
+        isAdult: false,
+        mbContentRating: "unknown",
+      }).mangaInfo.contentRating,
+      ContentRating.MATURE,
+    );
+    for (const [pageRating, indexRating, expected] of [
+      ["Suggestive", "Safe", ContentRating.EVERYONE],
+      ["Safe", "Suggestive", ContentRating.MATURE],
+    ] as const) {
+      assert.equal(
+        parseMangaPage(
+          { mangaPage: { ...MANGA_PAGE_RESPONSE.mangaPage, mbContentRating: pageRating } },
+          "oJQ4o",
+          { id: "oJQ4o", mbContentRating: indexRating },
+        ).mangaInfo.contentRating,
+        expected,
+      );
+    }
   });
 });

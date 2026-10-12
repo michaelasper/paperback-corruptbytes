@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { afterEach, describe, it } from "node:test";
 
 import { ContentRating, type Chapter, type Request, type SourceManga } from "@paperback/types";
 
@@ -16,12 +16,13 @@ import {
   buildAllChaptersUrl,
   buildChapterUrl,
   buildHomeUrl,
-  buildMangaDocumentUrl,
+  buildMangaRatingUrl,
   buildMangaPageUrl,
   buildNovelChapterUrl,
   buildSearchUrl,
 } from "./network.js";
 import {
+  ratingResponse,
   AVAILABLE_FILTERS_RESPONSE,
   CHAPTERS_RESPONSE,
   COMIC_CHAPTER_RESPONSE,
@@ -45,6 +46,9 @@ class FakeTransport implements AtsumaruTransport {
   }
 }
 
+const originalApplication = globalThis.Application;
+afterEach(() => Object.assign(globalThis, { Application: originalApplication }));
+
 const manga = (mangaId: string, contentType: "comic" | "novel" = "comic"): SourceManga => ({
   mangaId,
   mangaInfo: {
@@ -65,7 +69,7 @@ const setDetailResponses = (
   rating: unknown = { id: mangaId, isAdult: false, mbContentRating: "Safe" },
 ): void => {
   transport.bodies.set(buildMangaPageUrl(mangaId), page);
-  transport.bodies.set(buildMangaDocumentUrl(mangaId), rating);
+  transport.bodies.set(buildMangaRatingUrl(mangaId), ratingResponse(rating));
 };
 
 describe("Atsumaru client cache and identity boundaries", () => {
@@ -78,7 +82,7 @@ describe("Atsumaru client cache and identity boundaries", () => {
       Array.from({ length: 20 }, () => client.getMangaDetails("oJQ4o")),
     );
     assert.equal(transport.calls.filter((url) => url === buildMangaPageUrl("oJQ4o")).length, 1);
-    assert.equal(transport.calls.filter((url) => url === buildMangaDocumentUrl("oJQ4o")).length, 1);
+    assert.equal(transport.calls.filter((url) => url === buildMangaRatingUrl("oJQ4o")).length, 1);
     assert.ok(results.every((result) => result.mangaId === "oJQ4o"));
     assert.equal(results[0]?.mangaInfo.contentRating, ContentRating.EVERYONE);
 
@@ -92,11 +96,14 @@ describe("Atsumaru client cache and identity boundaries", () => {
     const transport = new FakeTransport();
     const url = buildMangaPageUrl("oJQ4o");
     transport.bodies.set(url, { mangaPage: null });
-    transport.bodies.set(buildMangaDocumentUrl("oJQ4o"), {
-      id: "oJQ4o",
-      isAdult: false,
-      mbContentRating: "Safe",
-    });
+    transport.bodies.set(
+      buildMangaRatingUrl("oJQ4o"),
+      ratingResponse({
+        id: "oJQ4o",
+        isAdult: false,
+        mbContentRating: "Safe",
+      }),
+    );
     const client = new AtsumaruClient(transport);
 
     await assert.rejects(client.getMangaDetails("oJQ4o"), /null or invalid mangaPage/);
@@ -192,7 +199,10 @@ describe("Atsumaru client cache and identity boundaries", () => {
     assert.equal(transport.calls.filter((url) => url.includes("allChapters")).length, 1);
 
     const oneTranslation = await client.getChapters(sourceManga, undefined, false);
-    assert.equal(new Set(oneTranslation.map(({ chapNum }) => chapNum)).size, oneTranslation.length);
+    assert.deepEqual(
+      oneTranslation.map(({ chapterId }) => chapterId),
+      ["h4j-gl", "_rmrsb"],
+    );
   });
 
   it("does not make authoritative chapters depend on auxiliary manga-page metadata", async () => {
@@ -413,11 +423,14 @@ describe("Atsumaru client cache and identity boundaries", () => {
     const transport = new FakeTransport();
     const url = buildMangaPageUrl("oJQ4o");
     transport.bodies.set(url, new Error("temporary"));
-    transport.bodies.set(buildMangaDocumentUrl("oJQ4o"), {
-      id: "oJQ4o",
-      isAdult: false,
-      mbContentRating: "Safe",
-    });
+    transport.bodies.set(
+      buildMangaRatingUrl("oJQ4o"),
+      ratingResponse({
+        id: "oJQ4o",
+        isAdult: false,
+        mbContentRating: "Safe",
+      }),
+    );
     const client = new AtsumaruClient(transport);
     await assert.rejects(client.getMangaDetails("oJQ4o"), /temporary/);
 
@@ -425,24 +438,24 @@ describe("Atsumaru client cache and identity boundaries", () => {
     await client.getMangaDetails("oJQ4o");
     assert.equal(transport.calls.filter((requestUrl) => requestUrl === url).length, 2);
     assert.equal(
-      transport.calls.filter((requestUrl) => requestUrl === buildMangaDocumentUrl("oJQ4o")).length,
+      transport.calls.filter((requestUrl) => requestUrl === buildMangaRatingUrl("oJQ4o")).length,
       1,
     );
     client.invalidateCaches();
     await client.getMangaDetails("oJQ4o");
     assert.equal(transport.calls.filter((requestUrl) => requestUrl === url).length, 3);
     assert.equal(
-      transport.calls.filter((requestUrl) => requestUrl === buildMangaDocumentUrl("oJQ4o")).length,
+      transport.calls.filter((requestUrl) => requestUrl === buildMangaRatingUrl("oJQ4o")).length,
       2,
     );
   });
 
-  it("maps rating authority, caches a missing document, and retries transient failures", async () => {
+  it("caches completed zero-hit absence and retries transient failures", async () => {
     const transport = new FakeTransport();
     const pageUrl = buildMangaPageUrl("oJQ4o");
-    const ratingUrl = buildMangaDocumentUrl("oJQ4o");
+    const ratingUrl = buildMangaRatingUrl("oJQ4o");
     transport.bodies.set(pageUrl, MANGA_PAGE_RESPONSE);
-    transport.bodies.set(ratingUrl, new SourceHttpError("Atsumaru", 404));
+    transport.bodies.set(ratingUrl, ratingResponse());
     const client = new AtsumaruClient(transport);
 
     const missingFirst = await client.getMangaDetails("oJQ4o");
@@ -455,38 +468,44 @@ describe("Atsumaru client cache and identity boundaries", () => {
     transport.bodies.set(ratingUrl, new Error("temporary rating outage"));
     const outageFallback = await client.getMangaDetails("oJQ4o");
     assert.equal(outageFallback.mangaInfo.contentRating, ContentRating.MATURE);
-    transport.bodies.set(ratingUrl, {
-      id: "oJQ4o",
-      isAdult: false,
-      mbContentRating: "Suggestive",
-    });
+    transport.bodies.set(
+      ratingUrl,
+      ratingResponse({
+        id: "oJQ4o",
+        isAdult: false,
+        mbContentRating: "Erotica",
+      }),
+    );
     const recovered = await client.getMangaDetails("oJQ4o");
-    assert.equal(recovered.mangaInfo.contentRating, ContentRating.MATURE);
+    assert.equal(recovered.mangaInfo.contentRating, ContentRating.ADULT);
     assert.equal(transport.calls.filter((url) => url === ratingUrl).length, 3);
   });
 
   it("does not cache an untyped failure merely because its text resembles a 404", async () => {
     const transport = new FakeTransport();
-    const ratingUrl = buildMangaDocumentUrl("oJQ4o");
+    const ratingUrl = buildMangaRatingUrl("oJQ4o");
     setDetailResponses(transport);
     transport.bodies.set(ratingUrl, new Error("Atsumaru content was not found."));
     const client = new AtsumaruClient(transport);
 
     await client.getMangaDetails("oJQ4o");
-    transport.bodies.set(ratingUrl, {
-      id: "oJQ4o",
-      isAdult: false,
-      mbContentRating: "Suggestive",
-    });
+    transport.bodies.set(
+      ratingUrl,
+      ratingResponse({
+        id: "oJQ4o",
+        isAdult: false,
+        mbContentRating: "Erotica",
+      }),
+    );
     const recovered = await client.getMangaDetails("oJQ4o");
 
-    assert.equal(recovered.mangaInfo.contentRating, ContentRating.MATURE);
+    assert.equal(recovered.mangaInfo.contentRating, ContentRating.ADULT);
     assert.equal(transport.calls.filter((url) => url === ratingUrl).length, 2);
   });
 
   it("does not cache an invalid rating document identity", async () => {
     const transport = new FakeTransport();
-    const ratingUrl = buildMangaDocumentUrl("oJQ4o");
+    const ratingUrl = buildMangaRatingUrl("oJQ4o");
     setDetailResponses(transport, "oJQ4o", MANGA_PAGE_RESPONSE, {
       id: "different-series",
       isAdult: false,
@@ -496,19 +515,22 @@ describe("Atsumaru client cache and identity boundaries", () => {
 
     const fallback = await client.getMangaDetails("oJQ4o");
     assert.equal(fallback.mangaInfo.contentRating, ContentRating.MATURE);
-    transport.bodies.set(ratingUrl, {
-      id: "oJQ4o",
-      isAdult: false,
-      mbContentRating: "Suggestive",
-    });
+    transport.bodies.set(
+      ratingUrl,
+      ratingResponse({
+        id: "oJQ4o",
+        isAdult: false,
+        mbContentRating: "Erotica",
+      }),
+    );
     const recovered = await client.getMangaDetails("oJQ4o");
-    assert.equal(recovered.mangaInfo.contentRating, ContentRating.MATURE);
+    assert.equal(recovered.mangaInfo.contentRating, ContentRating.ADULT);
     assert.equal(transport.calls.filter((url) => url === ratingUrl).length, 2);
   });
 
   it("caches a verified same-ID document even when mbContentRating is absent", async () => {
     const transport = new FakeTransport();
-    const ratingUrl = buildMangaDocumentUrl("oJQ4o");
+    const ratingUrl = buildMangaRatingUrl("oJQ4o");
     setDetailResponses(transport, "oJQ4o", MANGA_PAGE_RESPONSE, {
       id: "oJQ4o",
       isAdult: false,
@@ -516,11 +538,14 @@ describe("Atsumaru client cache and identity boundaries", () => {
     const client = new AtsumaruClient(transport);
 
     const first = await client.getMangaDetails("oJQ4o");
-    transport.bodies.set(ratingUrl, {
-      id: "oJQ4o",
-      isAdult: false,
-      mbContentRating: "Suggestive",
-    });
+    transport.bodies.set(
+      ratingUrl,
+      ratingResponse({
+        id: "oJQ4o",
+        isAdult: false,
+        mbContentRating: "Erotica",
+      }),
+    );
     const second = await client.getMangaDetails("oJQ4o");
 
     assert.equal(first.mangaInfo.contentRating, ContentRating.MATURE);
@@ -533,19 +558,176 @@ describe("Atsumaru client cache and identity boundaries", () => {
     setDetailResponses(transport, "oJQ4o", MANGA_PAGE_RESPONSE, {
       id: "oJQ4o",
       isAdult: false,
-      mbContentRating: "Suggestive",
+      mbContentRating: "Erotica",
     });
     const client = new AtsumaruClient(transport);
 
     const details = await client.getMangaDetails("oJQ4o");
 
-    assert.equal(details.mangaInfo.contentRating, ContentRating.MATURE);
-    assert.deepEqual(transport.options[transport.calls.indexOf(buildMangaDocumentUrl("oJQ4o"))], {
+    assert.equal(details.mangaInfo.contentRating, ContentRating.ADULT);
+    assert.deepEqual(transport.options[transport.calls.indexOf(buildMangaRatingUrl("oJQ4o"))], {
       maxBytes: 1_024,
     });
     assert.deepEqual(transport.calls.slice(0, 2), [
       buildMangaPageUrl("oJQ4o"),
-      buildMangaDocumentUrl("oJQ4o"),
+      buildMangaRatingUrl("oJQ4o"),
     ]);
+  });
+
+  it("retries rejected rating searches and recovers to ADULT rather than caching absence", async () => {
+    for (const failure of [
+      new SourceHttpError("Atsumaru", 404),
+      new SourceHttpError("Atsumaru", 429),
+      new SourceHttpError("Atsumaru", 503),
+      new Error("transport unavailable"),
+      { ...ratingResponse(), search_cutoff: true },
+      { ...ratingResponse(), page: 2 },
+      { found: 0, hits: [] },
+      ratingResponse({ id: "oJq4o", mbContentRating: "Safe" }),
+      { error: "invalid search" },
+    ]) {
+      const transport = new FakeTransport();
+      setDetailResponses(transport);
+      const url = buildMangaRatingUrl("oJQ4o");
+      transport.bodies.set(url, failure);
+      const client = new AtsumaruClient(transport);
+      assert.equal(
+        (await client.getMangaDetails("oJQ4o")).mangaInfo.contentRating,
+        ContentRating.MATURE,
+      );
+      transport.bodies.set(url, ratingResponse({ id: "oJQ4o", mbContentRating: "Erotica" }));
+      assert.equal(
+        (await client.getMangaDetails("oJQ4o")).mangaInfo.contentRating,
+        ContentRating.ADULT,
+      );
+      assert.equal(transport.calls.filter((value) => value === url).length, 2);
+    }
+  });
+
+  it("evicts the oldest rating after 64 distinct series", async () => {
+    const transport = new FakeTransport();
+    const client = new AtsumaruClient(transport);
+    for (let index = 0; index < 65; index += 1) {
+      const id = `series-${index}`;
+      setDetailResponses(transport, id, {
+        mangaPage: { ...MANGA_PAGE_RESPONSE.mangaPage, id },
+      });
+      assert.equal(
+        (await client.getMangaDetails(id)).mangaInfo.contentRating,
+        ContentRating.EVERYONE,
+      );
+    }
+    transport.bodies.set(
+      buildMangaRatingUrl("series-0"),
+      ratingResponse({ id: "series-0", isAdult: true }),
+    );
+    assert.equal(
+      (await client.getMangaDetails("series-0")).mangaInfo.contentRating,
+      ContentRating.ADULT,
+    );
+    assert.equal(
+      transport.calls.filter((url) => url === buildMangaRatingUrl("series-0")).length,
+      2,
+    );
+  });
+
+  it("uses real transport limits and retries HTML, invalid JSON, oversized bodies and foreign redirects", async () => {
+    const url = buildMangaRatingUrl("oJQ4o");
+    for (const failure of [
+      { body: "<html><title>Atsumaru</title></html>", url },
+      { body: "{invalid", url },
+      { body: "x".repeat(1_025), url },
+      {
+        body: JSON.stringify(ratingResponse({ id: "oJQ4o", isAdult: true })),
+        url: "https://example.com/rating",
+      },
+    ]) {
+      let recover = false;
+      let ratingCalls = 0;
+      let oversizedDecoded = false;
+      Object.assign(globalThis, {
+        Application: {
+          arrayBufferToUTF8String: (buffer: ArrayBuffer) => {
+            if (buffer.byteLength === 1_025) oversizedDecoded = true;
+            return new TextDecoder().decode(buffer);
+          },
+          scheduleRequest: async (request: Request) => {
+            const isRating = request.url === url;
+            if (isRating) ratingCalls += 1;
+            const body = isRating
+              ? recover
+                ? JSON.stringify(ratingResponse({ id: "oJQ4o", isAdult: true }))
+                : failure.body
+              : JSON.stringify(MANGA_PAGE_RESPONSE);
+            return [
+              {
+                url: isRating && !recover ? failure.url : request.url,
+                status: 200,
+                headers: {},
+                cookies: [],
+              },
+              new TextEncoder().encode(body).buffer,
+            ];
+          },
+        },
+      });
+      const client = new AtsumaruClient();
+      assert.equal(
+        (await client.getMangaDetails("oJQ4o")).mangaInfo.contentRating,
+        ContentRating.MATURE,
+      );
+      recover = true;
+      assert.equal(
+        (await client.getMangaDetails("oJQ4o")).mangaInfo.contentRating,
+        ContentRating.ADULT,
+      );
+      assert.equal(ratingCalls, 2);
+      assert.equal(oversizedDecoded, false);
+    }
+  });
+
+  it("retains verified ratings and completed absence for 120 seconds, then refreshes", async (context) => {
+    let now = 0;
+    context.mock.method(Date, "now", () => now);
+    for (const initial of [null, { id: "oJQ4o", mbContentRating: "Safe" }]) {
+      now = 0;
+      const transport = new FakeTransport();
+      setDetailResponses(transport, "oJQ4o", MANGA_PAGE_RESPONSE, initial);
+      const client = new AtsumaruClient(transport);
+      const expected = initial === null ? ContentRating.MATURE : ContentRating.EVERYONE;
+      assert.equal((await client.getMangaDetails("oJQ4o")).mangaInfo.contentRating, expected);
+      transport.bodies.set(
+        buildMangaRatingUrl("oJQ4o"),
+        ratingResponse({ id: "oJQ4o", isAdult: true }),
+      );
+      now = 119_999;
+      assert.equal((await client.getMangaDetails("oJQ4o")).mangaInfo.contentRating, expected);
+      now = 120_000;
+      assert.equal(
+        (await client.getMangaDetails("oJQ4o")).mangaInfo.contentRating,
+        ContentRating.ADULT,
+      );
+    }
+  });
+
+  it("selects the newest alternate and breaks equal timestamps by ID for zero and fractional chapters", async () => {
+    const transport = new FakeTransport();
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), {
+      chapters: [
+        { id: "zero-a", number: 0, createdAt: 1700000000000 },
+        { id: "zero-z", number: 0, createdAt: 1700000000000 },
+        { id: "half-old", number: 0.5, createdAt: 1690000000000 },
+        { id: "half-new", number: 0.5, createdAt: 1700000000000 },
+      ],
+    });
+    const client = new AtsumaruClient(transport);
+    const chapters = await client.getChapters(manga("oJQ4o"), new Date(1800000000000), false);
+    assert.deepEqual(
+      chapters.map(({ chapterId, chapNum, sortingIndex }) => [chapterId, chapNum, sortingIndex]),
+      [
+        ["zero-z", 0, 0],
+        ["half-new", 0.5, 1],
+      ],
+    );
   });
 });

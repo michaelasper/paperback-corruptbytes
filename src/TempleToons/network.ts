@@ -1,6 +1,6 @@
-import type { Request } from "@paperback/types";
+import { CloudflareError, URL as PaperbackURL, type Request } from "@paperback/types";
 
-import { fetchSourceJson, fetchSourceText, requestContext } from "../shared/http.js";
+import { fetchSourceTextResponse, requestContext } from "../shared/http.js";
 import { decodePaperbackIdComponent, encodePaperbackIdComponent } from "../shared/ids.js";
 import { isHttpsUrlForHosts } from "../shared/url.js";
 import { TEMPLE_SITE } from "./site.js";
@@ -17,19 +17,39 @@ const RESPONSE_OPTIONS = {
     isHttpsUrlForHosts(responseUrl, RESPONSE_HOSTS),
 } as const;
 
-export const fetchText = async (request: Request): Promise<string> =>
-  fetchSourceText(request, RESPONSE_OPTIONS);
+const HTML_DOCUMENT = /^\s*(?:<!doctype\s+html\b|<html\b|<head\b|<body\b|<title\b)/i;
+const TURNSTILE_WALL_SIGNATURE =
+  "TempleToons uses Cloudflare Turnstile to protect against automated scraping. No personal data is collected.";
+const CHALLENGE_PAGE_SCRIPT =
+  /<script\b[^>]*\bsrc=["']\/_next\/static\/chunks\/app\/challenge\/page-[^"'<>]+\.js["']/i;
+
+export const fetchText = async (request: Request): Promise<string> => {
+  const { response, body } = await fetchSourceTextResponse(request, RESPONSE_OPTIONS);
+  if (
+    HTML_DOCUMENT.test(body) &&
+    (body.includes(TURNSTILE_WALL_SIGNATURE) ||
+      (/^\/challenge\/?$/.test(new PaperbackURL(response.url).path) &&
+        CHALLENGE_PAGE_SCRIPT.test(body)))
+  ) {
+    throw new CloudflareError(
+      { url: ROOT_URL, method: "GET" },
+      "Temple requires Cloudflare Turnstile verification before this content can be accessed.",
+    );
+  }
+  return body;
+};
 
 export const fetchJson = async <T>(request: Request): Promise<T> => {
+  const body = await fetchText(request);
+  if (HTML_DOCUMENT.test(body)) {
+    throw new Error("Temple returned HTML instead of JSON.");
+  }
   try {
-    return await fetchSourceJson<T>(request, RESPONSE_OPTIONS);
-  } catch (error: unknown) {
-    if (error instanceof Error && /returned invalid JSON\./i.test(error.message)) {
-      throw new Error(`Temple returned invalid JSON for ${requestContext(request.url)}.`, {
-        cause: error,
-      });
-    }
-    throw error;
+    return JSON.parse(body) as T;
+  } catch {
+    throw new Error(`Temple returned invalid JSON for ${requestContext(request.url)}.`, {
+      cause: new Error("Temple returned invalid JSON."),
+    });
   }
 };
 

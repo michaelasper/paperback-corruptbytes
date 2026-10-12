@@ -148,7 +148,7 @@ export class RokariExtension implements ExtensionImpl<typeof RokariConfig> {
   async getSearchResults(
     query: SearchQuery<RokariSearchMetadata>,
     metadata: RokariPageMetadata | undefined,
-    _sortingOption?: SortingOption,
+    sortingOption?: SortingOption,
   ): Promise<PagedResults<SearchResultItem>> {
     const pasted = await this.client.resolvePastedUrl(query.title ?? "");
     if (pasted) return pasted;
@@ -159,7 +159,8 @@ export class RokariExtension implements ExtensionImpl<typeof RokariConfig> {
       return { items: searchItems(await this.client.getGenrePage(genres[0])) };
     }
     if (!term) {
-      return { items: searchItems(await this.client.getCatalogPage("update")) };
+      const order = sortingOption?.id === "popular" ? "popular" : "update";
+      return { items: searchItems(await this.client.getCatalogPage(order)) };
     }
     return { items: searchItems(await this.client.searchComics(term)) };
   }

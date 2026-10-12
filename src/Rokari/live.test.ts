@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { after, describe, it } from "node:test";
 
 import type { Request, Response as PaperbackResponse } from "@paperback/types";
@@ -52,6 +53,30 @@ describe("Rokari Comics live public contract", { skip: !live }, () => {
     if (page.items.length === 0) throw new Error("Rokari anonymous catalog is empty.");
     const nullPage = await Rokari.getDiscoverSectionItems(latest, null as never);
     if (nullPage.items.length === 0) throw new Error("Rokari rejects null page metadata.");
+    const genres = sections.find((section) => section.id === "genres");
+    assert.ok(genres, "Rokari genre section is missing.");
+    const taxonomy = await Rokari.getDiscoverSectionItems(genres, undefined);
+    const action = taxonomy.items.find(
+      (item) => item.type === "genresCarouselItem" && item.name === "Action",
+    );
+    assert.ok(action?.type === "genresCarouselItem", "Rokari Action genre is missing.");
+    assert.deepEqual(action.searchQuery, { title: "", metadata: { genres: ["action"] } });
+    const filtered = await Rokari.getSearchResults(
+      { title: "", metadata: { genres: ["action"] } },
+      undefined,
+    );
+    assert.ok(filtered.items.length > 0, "Rokari Action catalog is empty.");
+  });
+
+  it("finds Bunker Days by keyword and serves the advertised Popular catalog", async () => {
+    const results = await Rokari.getSearchResults({ title: "Bunker" }, undefined);
+    assert.ok(results.items.some((item) => item.mangaId === sourceMangaId));
+    const option = (await Rokari.getSortingOptions({ title: "" })).find(
+      (item) => item.id === "popular",
+    );
+    assert.ok(option, "Rokari Popular sort is missing.");
+    const popular = await Rokari.getSearchResults({ title: "" }, undefined, option);
+    assert.ok(popular.items.length > 0, "Rokari Popular catalog is empty.");
   });
 
   it("loads series metadata, chapters, and an accessible reader", async () => {
@@ -66,6 +91,18 @@ describe("Rokari Comics live public contract", { skip: !live }, () => {
     const reader = await Rokari.getChapterDetails(readable);
     if (!("pages" in reader) || reader.pages.length === 0) {
       throw new Error("Rokari reader returned no pages.");
+    }
+    const firstPage = reader.pages[0];
+    assert.ok(firstPage, "Rokari reader is missing its first image.");
+    const image = await fetch(firstPage, {
+      headers: { "user-agent": userAgent, referer: "https://rokaricomics.com/" },
+      signal: AbortSignal.timeout(20_000),
+    });
+    try {
+      assert.ok(image.ok, `Rokari first image returned HTTP ${image.status}.`);
+      assert.match(image.headers.get("content-type") ?? "", /^image\//i);
+    } finally {
+      await image.body?.cancel();
     }
   });
 });

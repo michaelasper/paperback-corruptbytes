@@ -40,9 +40,6 @@ after(() => {
   if (live) Object.assign(globalThis, { Application: originalApplication });
 });
 
-// The search API is bot accessible everywhere. Series and chapter HTML pages sit
-// behind the site Turnstile wall, so the second case needs residential egress or
-// Paperback Cloudflare bypass cookies. It was verified through a cleared browser.
 const sourceMangaId = "walk-in-the-night";
 
 describe("Temple Scan live public contract", { skip: !live }, () => {

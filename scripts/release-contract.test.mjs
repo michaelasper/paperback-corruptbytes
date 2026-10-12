@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 
 import { pinSafeDirectory, readSafeFile } from "./safe-files.mjs";
+import { packageShibaTheme } from "./shiba-theme.mjs";
 import { verifyBundles } from "./verify-bundles.mjs";
 import { verifyVersionBumps } from "./verify-version-bumps.mjs";
 import {
@@ -74,6 +75,12 @@ async function bundleFixture({
   const root = await temporaryDirectory();
   await mkdir(join(root, "bundles"), { recursive: true });
   await writeFile(join(root, "bundles", "index.html"), "<!doctype html>\n");
+  await mkdir(join(root, "themes"));
+  await writeFile(
+    join(root, "themes", "shiba.pbcolors"),
+    await readFile(new URL("../themes/shiba.pbcolors", import.meta.url)),
+  );
+  await packageShibaTheme(root);
   const listedSources = [];
   for (const id of sourceIds) {
     const sourceDirectory = join(root, "src", id);
@@ -1002,3 +1009,27 @@ for (const artifact of ["index.js", "info.json"]) {
     }
   });
 }
+
+void test("bundle verification allows only the exact Shiba artifact without changing source IDs", async () => {
+  const root = await bundleFixture({ sourceIds: ["Beta", "Alpha"] });
+  try {
+    assert.deepEqual(await verifyBundles(root), { sourceIds: ["Alpha", "Beta"] });
+    for (const name of ["shiba.pbcolor", "other.pbcolors", "shiba.pbcolors.bak"]) {
+      await writeFile(join(root, "bundles", name), "{}");
+      await assert.rejects(verifyBundles(root), /not a recognized bundle artifact/);
+      await rm(join(root, "bundles", name));
+    }
+    await rm(join(root, "bundles", "shiba.pbcolors"));
+    await assert.rejects(verifyBundles(root), /ENOENT/);
+    await writeFile(join(root, "bundles", "shiba.pbcolors"), "{}");
+    await assert.rejects(verifyBundles(root), /source bytes/);
+    await rm(join(root, "bundles", "shiba.pbcolors"));
+    await symlink(join(root, "themes", "shiba.pbcolors"), join(root, "bundles", "shiba.pbcolors"));
+    await assert.rejects(verifyBundles(root), /symbolic link/);
+    await rm(join(root, "bundles", "shiba.pbcolors"));
+    await mkdir(join(root, "bundles", "shiba.pbcolors"));
+    await assert.rejects(verifyBundles(root), /Physical bundle\/source mismatch/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

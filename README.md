@@ -126,6 +126,22 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 Paperback applies profile visibility before listing repository sources. Rinko Comics and Valir Scans are marked **Mature**; Diva Scans and Qi Manga are marked **Adult** because their catalogs include mature or explicit genres. Sign in to Paperback and enable the corresponding content level if either source is absent from the extension list. If the repository was added while a release was still deploying, refresh it after the public repository page shows the new source.
 
+## Shiba theme
+
+[Download shiba.pbcolors](https://michaelasper.github.io/paperback-corruptbytes/shiba.pbcolors) for warm white reading areas, orange controls, and a separate dark palette.
+
+To preview or edit the file, open the [Paperback theme editor](https://theme.pirate.vodka), select **Import**, and choose `shiba.pbcolors`. Select **Show preview** and inspect **Light** and **Dark**. Before editing one mode, turn off **Modes linked**. Import enables linking again. Select **Export** and keep the name `shiba` to download `shiba.pbcolors`.
+
+The editor preview is not a native Paperback test. It dims completed chapters and leaves five role mappings unresolved. Native materials can also differ. Do not infer blanket accessibility compliance from the preview or the numeric contrast checks.
+
+Maintainers edit `themes/shiba.pbcolors` directly. `npm run bundle` validates its closed 20-role schema and supported contrast pairs, copies its bytes, and verifies the packaged file. After deployment, run the published-byte check against the release checkout:
+
+```bash
+PUBLISHED_REPOSITORY_URL=https://michaelasper.github.io/paperback-corruptbytes/ \
+PUBLISHED_RELEASE_KEY="$(git rev-parse HEAD)" \
+  node scripts/shiba-theme.mjs verify-published
+```
+
 ## Account-backed chapters
 
 Thunder Scans, Qi Manga, Valir Scans, Diva Scans, and Vortex Scans can expose chapters the signed-in site reports as purchased. Open the extension’s settings, choose its sign-in action, complete authentication on the source’s first-party page, return to the account or profile page, then tap **Done** so Paperback can import only the resulting source cookies.

@@ -29,14 +29,11 @@ const filters = {
   genres: GENRE_OPTIONS.map(({ id, title }) => ({ id, name: title })),
   types: TYPE_OPTIONS.map(({ id, title }) => ({ id, name: title })),
   statuses: STATUS_OPTIONS.map(({ id, title }) => ({ id, name: title })),
-  tags: Array.from(
-    { length: 2_408 },
-    (_, index): FilterItem => ({
-      id: `tag-${index}`,
-      name: `Tag ${index}`,
-      group: `Group ${index % 17}`,
-    }),
-  ),
+  tags: Array.from({ length: 2_408 }, (_, index): FilterItem => ({
+    id: `tag-${index}`,
+    name: `Tag ${index}`,
+    group: `Group ${index % 17}`,
+  })),
 };
 
 type SearchFormItem = { id: string; value?: unknown };

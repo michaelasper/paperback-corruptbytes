@@ -528,24 +528,22 @@ export class RinkoComicsClient {
         const timestamp = safeTimestamp(row.publishDate);
         return timestamp === undefined || timestamp > since;
       })
-      .map(
-        (row, index): Chapter => ({
-          chapterId: row.chapterId!,
-          sourceManga,
-          langCode: "en",
-          chapNum: row.chapNum,
-          ...(row.title && { title: row.title }),
-          ...(row.publishDate && {
-            publishDate: new IntrinsicDate(dateGetTime(row.publishDate)),
-          }),
-          sortingIndex: index,
-          additionalInfo: {
-            slug: row.slug!,
-            postId: row.postId,
-            url: row.url!,
-          },
+      .map((row, index): Chapter => ({
+        chapterId: row.chapterId!,
+        sourceManga,
+        langCode: "en",
+        chapNum: row.chapNum,
+        ...(row.title && { title: row.title }),
+        ...(row.publishDate && {
+          publishDate: new IntrinsicDate(dateGetTime(row.publishDate)),
         }),
-      );
+        sortingIndex: index,
+        additionalInfo: {
+          slug: row.slug!,
+          postId: row.postId,
+          url: row.url!,
+        },
+      }));
   }
 
   async getChapterDetails(chapter: Chapter): Promise<ChapterDetails> {

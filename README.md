@@ -45,7 +45,7 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 | Extension                                                                        | Status | Best for                                                                                                                |
 | -------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
-| <img src="src/Atsumaru/static/icon.png" alt="" width="28"> **Atsumaru**          | Alpha  | Comics, novels, all anonymous discovery rails, 2,408-tag search, and exported-library chapter compatibility             |
+| <img src="src/Atsumaru/static/icon.png" alt="" width="28"> **Atsumaru**          | Alpha  | Comics, novels, all anonymous discovery rails, 6,134-tag search, and exported-library chapter compatibility             |
 | <img src="src/DivaScans/static/icon.png" alt="" width="28"> **Diva Scans**       | Alpha  | Comics, novels, full paginated histories, detailed search filters, and account-aware chapter access                     |
 | <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | Alpha  | Complete Madara discovery/search, exported numeric-ID compatibility, and automatically authorized image readers         |
 | <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | Alpha  | A large safe-mode catalog, detailed range/rating/availability filters, and stable comic reader slugs                    |
@@ -58,7 +58,7 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 ### Atsumaru
 
 - All 13 anonymous manga discovery rails, live genres, exact Typesense sorting, pasted series URLs, and comic or novel search.
-- Include/exclude filters for 21 genres and 2,408 detailed tags, organized into 17 on-demand groups so the initial form stays fast.
+- Include/exclude filters for 21 genres and 6,134 detailed tags, organized into 19 on-demand groups so the initial form stays fast.
 - Exact case-sensitive manga, chapter, and scanlation IDs—including alternate translations—preserve the exported library’s reading progress.
 - Direct CDN comic pages, escaped XHTML novel chapters, standard-by-default catalog controls with explicit rating filters, and no account requirement.
 

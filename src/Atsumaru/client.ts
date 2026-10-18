@@ -113,8 +113,10 @@ const newestTranslationPerNumber = (chapters: Chapter[]): Chapter[] => {
     .map((chapter, sortingIndex) => ({ ...chapter, sortingIndex }));
 };
 
-/** The live availableFilters payload is about 259 KiB; retain 2× headroom. */
-export const AVAILABLE_FILTERS_MAX_BYTES = 512 * 1_024;
+/** The live payload measured about 630 KiB for 6,134 tags on 2026-10-18.
+ * The parser accepts up to 20,000 items per list, about 2.1 MiB of tag records at the current size.
+ * 4 MiB keeps roughly 2x headroom over that contract. The cache weight below bounds the parsed taxonomy separately. */
+export const AVAILABLE_FILTERS_MAX_BYTES = 4 * 1_024 * 1_024;
 /** Bound the parsed taxonomy independently of the raw endpoint response. */
 const FILTER_CACHE_MAX_WEIGHT = 1 * 1_024 * 1_024;
 const FILTER_ROOT_WEIGHT = 256;

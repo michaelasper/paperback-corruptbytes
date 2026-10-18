@@ -157,6 +157,20 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
     assert.ok(page.items.some((item) => item.mangaId === "oJQ4o"));
   });
 
+  it("loads the full filter catalog through the production client", async () => {
+    const filters = await new AtsumaruClient().getFilterOptions();
+    assert.ok(
+      filters.genres.some((genre) => genre.name === "Action"),
+      "production filters did not include the Action genre",
+    );
+    assert.ok(
+      filters.tags.length > 2_408,
+      `production filters returned only ${filters.tags.length} tags`,
+    );
+    const tagGroups = new Set(filters.tags.map((tag) => tag.group));
+    assert.ok(tagGroups.has("Activities"), "production filters did not resolve tag groups");
+  });
+
   it("parses every anonymous home rail, including an explicit adult catalog", async () => {
     const assertFeed = (value: unknown, label: string) => {
       const record = value as { items?: unknown[] };

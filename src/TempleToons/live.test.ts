@@ -5,12 +5,15 @@ import type { Request, Response as PaperbackResponse } from "@paperback/types";
 import { TempleToons as Temple } from "./main.js";
 
 const live = process.env.TEMPLE_LIVE_TESTS === "1";
+const liveState = new Map<string, unknown>();
 const originalApplication = globalThis.Application;
 const userAgent = "Mozilla/5.0 PaperbackExtensionLiveContract/1.0";
 
 if (live) {
   Object.assign(globalThis, {
     Application: {
+      getState: (key: string) => liveState.get(key),
+      setState: (value: unknown, key: string) => liveState.set(key, value),
       arrayBufferToUTF8String: (buffer: ArrayBuffer): string => new TextDecoder().decode(buffer),
       scheduleRequest: async (request: Request): Promise<[PaperbackResponse, ArrayBuffer]> => {
         const headers = new Headers(request.headers);
@@ -59,6 +62,12 @@ describe("Temple Scan live public contract", { skip: !live }, () => {
     if (chapters.length === 0) throw new Error("Temple series returned no chapters.");
     const free = chapters.filter((chapter) => chapter.additionalInfo?.locked !== "true");
     if (free.length === 0) throw new Error("Temple series has no free chapters.");
+    Application.setState(false, "temple_scan.show_locked_chapters");
+    const visible = await Temple.getChapters(manga);
+    Application.setState(true, "temple_scan.show_locked_chapters");
+    if (visible.some((chapter) => chapter.additionalInfo?.locked === "true")) {
+      throw new Error("Temple returned locked chapters while locked chapters were hidden.");
+    }
     const candidate = free[free.length - 1];
     if (!candidate) throw new Error("Temple has no readable chapter candidate.");
     const reader = await Temple.getChapterDetails(candidate);

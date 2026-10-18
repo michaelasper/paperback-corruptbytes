@@ -8,7 +8,7 @@ import config from "./pbconfig.js";
 describe("Temple Scan extension metadata", () => {
   it("exposes valid Paperback source metadata with a versioned alpha release", () => {
     assert.equal(config.name, "Temple Scan");
-    assert.equal(config.version, "1.0.0-alpha.4");
+    assert.equal(config.version, "1.0.0-alpha.5");
     assert.equal(config.language, "en");
     assert.equal(config.icon, "icon.png");
     assert.equal(config.contentRating, ContentRating.ADULT);

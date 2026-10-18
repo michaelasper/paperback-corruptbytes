@@ -57,6 +57,30 @@ describe("Temple series parsing", () => {
     assert.equal(chapters[2]?.chapterId, "walk-in-the-night-chapter-64");
     assert.equal(chapters[2]?.additionalInfo?.locked, undefined);
   });
+
+  it("hides premium chapters and renumbers the rest when locked chapters are off", () => {
+    const chapters = parseChapters(TEMPLE_SERIES_HTML, sourceManga("walk-in-the-night"), {
+      showLocked: false,
+    });
+    assert.deepEqual(
+      chapters.map((chapter) => chapter.chapterId),
+      ["walk-in-the-night-chapter-65", "walk-in-the-night-chapter-64"],
+    );
+    assert.deepEqual(
+      chapters.map((chapter) => chapter.sortingIndex),
+      [0, 1],
+    );
+  });
+
+  it("returns an empty list when every chapter row is hidden by the setting", () => {
+    const html =
+      '<!DOCTYPE html><html><body><a href="walk-in-the-night/chapter-66"><span>Chapter 66</span><span>PREMIUM</span></a></body></html>';
+    assert.deepEqual(
+      parseChapters(html, sourceManga("walk-in-the-night"), { showLocked: false }),
+      [],
+    );
+    assert.equal(parseChapters(html, sourceManga("walk-in-the-night")).length, 1);
+  });
 });
 
 describe("Temple reader parsing", () => {

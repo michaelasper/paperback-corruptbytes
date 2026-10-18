@@ -23,13 +23,16 @@ import { TempleInterceptor } from "./interceptor.js";
 import type { TempleCatalogPage, TemplePageMetadata, TempleSearchMetadata } from "./models.js";
 import type TempleConfig from "./pbconfig.js";
 import { TempleAdvancedSearchForm } from "./search.js";
-import { TempleSettingsForm } from "./settings.js";
+import { getShowLockedChapters, TempleSettingsForm } from "./settings.js";
 
 export interface TempleClientContract {
   getCatalogPage(page: number): Promise<TempleCatalogPage>;
   searchComics(term: string, page: number): Promise<TempleCatalogPage>;
   getMangaDetails(mangaId: string): Promise<SourceManga>;
-  getChapters(sourceManga: SourceManga, sinceDate?: Date): Promise<Chapter[]>;
+  getChapters(
+    sourceManga: SourceManga,
+    options?: { showLocked?: boolean; sinceDate?: Date },
+  ): Promise<Chapter[]>;
   getChapterDetails(chapter: Chapter): Promise<ChapterDetails>;
   resolvePastedUrl(query: string): Promise<PagedResults<SearchResultItem> | undefined>;
   invalidateCaches(): void;
@@ -140,7 +143,7 @@ export class TempleExtension implements ExtensionImpl<typeof TempleConfig> {
   }
 
   async getChapters(sourceManga: SourceManga, sinceDate?: Date): Promise<Chapter[]> {
-    return this.client.getChapters(sourceManga, sinceDate);
+    return this.client.getChapters(sourceManga, { showLocked: getShowLockedChapters(), sinceDate });
   }
 
   async getChapterDetails(chapter: Chapter): Promise<ChapterDetails> {

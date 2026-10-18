@@ -165,10 +165,16 @@ const chapterNumberFromHref = (href: string): number => {
   return match?.[1] ? Number(match[1]) : Number.NaN;
 };
 
-export const parseChapters = (html: string, sourceManga: SourceManga): Chapter[] => {
+export const parseChapters = (
+  html: string,
+  sourceManga: SourceManga,
+  options: { showLocked?: boolean } = {},
+): Chapter[] => {
   const $ = load(html);
+  const showLocked = typeof options.showLocked === "boolean" ? options.showLocked : true;
   const seen = new Set<string>();
   const chapters: Chapter[] = [];
+  let rowsSeen = 0;
   $("a[href*='chapter-']").each((_, element) => {
     const link = $(element);
     const href = link.attr("href") ?? "";
@@ -179,8 +185,10 @@ export const parseChapters = (html: string, sourceManga: SourceManga): Chapter[]
     seen.add(slug);
     const mangaId = encodeSlug(slug);
     if (!mangaId) return;
-    const title = clean(link.find("span").first().text()) || `Chapter ${match[2]}`;
+    rowsSeen += 1;
     const locked = /PREMIUM/i.test(link.text());
+    if (locked && !showLocked) return;
+    const title = clean(link.find("span").first().text()) || `Chapter ${match[2]}`;
     const dateText = clean(link.text().replace(title, ""));
     const publishDate = dateText ? new Date(dateText) : undefined;
     const chapNum = chapterNumberFromHref(href);
@@ -197,7 +205,7 @@ export const parseChapters = (html: string, sourceManga: SourceManga): Chapter[]
       },
     });
   });
-  if (chapters.length === 0) throw new Error("Temple returned no chapters from the series page.");
+  if (rowsSeen === 0) throw new Error("Temple returned no chapters from the series page.");
   const sorted = chapters.sort(
     (left, right) => right.chapNum - left.chapNum || left.chapterId.localeCompare(right.chapterId),
   );

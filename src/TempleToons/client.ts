@@ -82,13 +82,17 @@ export class TempleClient {
     );
   }
 
-  async getChapters(sourceManga: SourceManga, sinceDate?: Date): Promise<Chapter[]> {
+  async getChapters(
+    sourceManga: SourceManga,
+    options: { showLocked?: boolean; sinceDate?: Date } = {},
+  ): Promise<Chapter[]> {
     const key = `chapters:${sourceManga.mangaId}`;
     const chapters = await this.chapterCache.getMapped(
       key,
       () => fetchText({ url: buildMangaUrl(sourceManga.mangaId), method: "GET" }),
-      (html) => parseChapters(html, sourceManga),
+      (html) => parseChapters(html, sourceManga, { showLocked: options.showLocked }),
     );
+    const sinceDate = options.sinceDate;
     if (!sinceDate || Number.isNaN(sinceDate.getTime())) return chapters;
     return chapters.filter(
       (chapter) => !chapter.publishDate || chapter.publishDate.getTime() > sinceDate.getTime(),

@@ -19,8 +19,7 @@ For Thunder Scans, Qi Manga, Valir Scans, Diva Scans, or Vortex Scans, open sour
 Preconditions: Launch and Doctor passed. Anonymous checks need no credentials. Native account checks need an explicitly assigned test account and device driver; otherwise mark them NOT RUN. Never borrow the user's existing session.
 
 - Anonymous and locked. Run `VORTEX_LIVE_TESTS=1 ./node_modules/.bin/tsx --test src/VortexScans/live.test.ts > "$VERIFY_EVIDENCE/account-vortex.log" 2>&1` and `npm run test:live:diva > "$VERIFY_EVIDENCE/account-diva.log" 2>&1`. Record each exit code immediately. Require public-reader success and the explicit locked-reader rejection cases, not an unrelated transport error.
-- Temple challenge. Run `npm run test:live:temple > "$VERIFY_EVIDENCE/account-temple.log" 2>&1`. Preserve failure output. The observed local wall produces `CloudflareError` with a trusted root resolution request before metadata/chapter caching. GitHub runners can instead receive HTTP 403. Neither result proves that native verification can complete the wall.
-- Cache retry and false positives. Run `./node_modules/.bin/tsx --test src/TempleToons/network.test.ts src/shared/cookies.test.ts > "$VERIFY_EVIDENCE/account-boundaries.log" 2>&1`. Require ordinary widget pages to remain ordinary content, failures to retry, and cookie-origin boundaries to hold. These fixtures are offline proof only.
+- Cache retry and cookie boundaries. Run `./node_modules/.bin/tsx --test src/shared/async-cache.test.ts src/shared/cookies.test.ts > "$VERIFY_EVIDENCE/account-boundaries.log" 2>&1`. Require failures to stay uncached so later requests retry, and cookie-origin boundaries to hold. These fixtures are offline proof only.
 - Anonymous authorization. Run `npm run test:live:madaradex > "$VERIFY_EVIDENCE/account-madaradex.log" 2>&1`. Require the anonymous authorization and first CDN-image case to pass. An HTTP 403 from the runner is BLOCKED, not successful authorization.
 - Native account path. Drive the actual sign-in, Done, owned-chapter open, locked-chapter rejection, and logout actions in the assigned profile. Capture redacted before/after state and verify a second reader attempt after logout. Do not log cookies or passwords. If the embedded view cannot complete the site's authentication method, record the limitation rather than changing credentials or bypassing it.
 
@@ -29,4 +28,4 @@ Preconditions: Launch and Doctor passed. Anonymous checks need no credentials. N
 - The live adapters do not establish native cookie import, passkey handoff, or logout persistence. Do not infer them from fixture tests.
 - No purchase, unlock, or new account entitlement is part of this verification.
 - Do not automatically rerun a challenged request until it passes. Distinguish access blocks from changed response formats using public status, final host/path, and safe diagnostics.
-- A green GitHub workflow can include failed advisory MadaraDex and Temple probes. Read their logs and warnings individually.
+- A green GitHub workflow can include a failed advisory MadaraDex probe. Read its log and warning.

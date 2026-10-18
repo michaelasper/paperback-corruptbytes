@@ -29,5 +29,5 @@ Preconditions: Launch and Doctor passed. No source account is required for the a
 - Blank catalog sorting is not automatically supported by keyword or genre routes. Rokari intentionally applies Popular only to blank, unfiltered search.
 - A nonempty result alone does not prove query relevance or the selected order. Use the literal target-ID and dispatch assertions.
 - Content-profile filtering can hide a source before discovery. That belongs to installation visibility, not an empty-catalog parser fix.
-- `npm run test:live:random` currently excludes Rokari and Temple. Its random seed supports replay, not all-source coverage.
+- `npm run test:live:random` currently excludes Rokari. Its random seed supports replay, not all-source coverage.
 - Refresh fixtures when titles or catalog totals legitimately change. Never loosen a test solely to turn an unexplained failure green.

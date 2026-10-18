@@ -79,17 +79,6 @@ jobs:
           probe failed. Its upstream currently rejects runner IPs with HTTP 403; inspect the
           probe logs and reproduce with npm run test:live:madaradex from another network."
 
-      - name: Probe Temple Scan from GitHub-hosted runner
-        id: temple-live
-        continue-on-error: true
-        run: npm run test:live:temple
-      - name: Report Temple Scan access block
-        if: steps.temple-live.outcome == 'failure'
-        run: >-
-          echo "::warning title=Temple Scan live probe non-gating::The Temple Scan probe
-          failed. Its series pages currently require a Turnstile challenge; inspect the
-          logs before classifying this as an access block or source regression."
-
   deploy:
     name: Deploy repository
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -21,7 +21,7 @@ void test("CI gates reachable protocols and explicitly reports access-blocked pr
   ]) {
     assert.match(githubLive, new RegExp(`${environmentName}=1`));
   }
-  assert.doesNotMatch(githubLive, /MADARADEX_LIVE_TESTS|TEMPLE_LIVE_TESTS/);
+  assert.doesNotMatch(githubLive, /MADARADEX_LIVE_TESTS/);
   const allLive = packageJson.scripts?.["test:live"];
   assert.equal(typeof allLive, "string");
   for (const environmentName of [
@@ -32,7 +32,6 @@ void test("CI gates reachable protocols and explicitly reports access-blocked pr
     "QIMANGA",
     "RINKO",
     "ROKARI",
-    "TEMPLE",
     "THUNDER",
     "VALIR",
     "VORTEX",
@@ -52,9 +51,4 @@ void test("CI gates reachable protocols and explicitly reports access-blocked pr
     /name: Probe MadaraDex from GitHub-hosted runner\n\s+id: madaradex-live\n\s+continue-on-error: true\n\s+run: npm run test:live:madaradex/,
   );
   assert.match(workflow, /steps\.madaradex-live\.outcome == 'failure'/);
-  assert.match(
-    workflow,
-    /name: Probe Temple Scan from GitHub-hosted runner\n\s+id: temple-live\n\s+continue-on-error: true\n\s+run: npm run test:live:temple/,
-  );
-  assert.match(workflow, /steps\.temple-live\.outcome == 'failure'/);
 });

@@ -78,7 +78,7 @@ for (const [sid, ids] of avail) for (const id of ids) ch2sid.set(id, sid);
 
 const HALF_LIFE_DAYS = Number(process.env.REC_HALF_LIFE_DAYS ?? 120);
 const ADULT_SOURCES = new Set(
-  (process.env.REC_ADULT_SOURCES ?? "divascans,templetoons,valirscans")
+  (process.env.REC_ADULT_SOURCES ?? "divascans,valirscans")
     .split(",")
     .map((source) => source.trim().toLowerCase())
     .filter(Boolean),

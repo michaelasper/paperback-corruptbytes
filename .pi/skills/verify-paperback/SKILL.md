@@ -34,7 +34,7 @@ test "$build_status" -eq 0 || exit "$build_status"
 
 Run lengthy commands through the session's managed command monitor. Preserve exit codes and use completion notifications instead of shell polling loops. On failure, inspect the log, run Cleanup, and fix the cause before retrying with fresh directories.
 
-Readiness is exit 0 from the build, `Packaged shiba.pbcolors.`, and `Verified 11 Paperback source bundles.`. Recount the sources if the manifest changes. A log line alone is insufficient; run Doctor.
+Readiness is exit 0 from the build, `Packaged shiba.pbcolors.`, and `Verified 10 Paperback source bundles.`. Recount the sources if the manifest changes. A log line alone is insufficient; run Doctor.
 
 The default protocol drive is short-lived and needs no local server, port, seed database, or credentials. To drive native installation, use the owned interactive server procedure in [installation](features/installation.md). Never start that server with closed stdin.
 
@@ -64,7 +64,7 @@ printf '%s\n' "$drive_status" > "$VERIFY_EVIDENCE/drive.exit"
 
 Read the log even when exit is 0. Require the named live tests to execute, not skip. The four-series diagnostics must show matching raw and retained chapter counts. Do not freeze upstream totals. Record the outcome before Cleanup, including failures.
 
-For all sites, use `npm run test:live`. It enables all eleven gates. `npm test` alone leaves live suites disabled. `npm run test:live:github` intentionally excludes MadaraDex and Temple; inspect their separate CI probe outcomes. A green job with advisory failures does not verify those sources.
+For all sites, use `npm run test:live`. It enables all ten gates. `npm test` alone leaves live suites disabled. `npm run test:live:github` intentionally excludes MadaraDex; inspect its separate CI probe outcome. A green job with an advisory failure does not verify MadaraDex.
 
 Live checks make real network requests and download bounded image samples. They are not dry runs. Never purchase content, bypass an access challenge, or change permissions to make a test pass. Keep an access block distinct from parser drift. An unexpected failure requires reproduction and triage, not an automatic skip or repeated retries.
 
@@ -105,7 +105,7 @@ No new helper scripts or browser dependencies are shipped with this skill. Reuse
 - `npm run verify:bundles` performs Doctor.
 - `npm run test:live:atsumaru` performs the baseline drive.
 - `npm run test:live` exercises every source gate.
-- `npm run test:live:random` probes nine sources, not Rokari or Temple. Record `LIVE_RANDOM_SEED`, `LIVE_RANDOM_SAMPLES`, and `LIVE_RANDOM_CONCURRENCY` for replay. It makes real requests.
+- `npm run test:live:random` probes nine sources, not Rokari. Record `LIVE_RANDOM_SEED`, `LIVE_RANDOM_SAMPLES`, and `LIVE_RANDOM_CONCURRENCY` for replay. It makes real requests.
 - `node scripts/shiba-theme.mjs verify-published` checks a deployed theme. Supply both published environment variables as shown in [the theme recipe](features/theme.md).
 
 See [installation](features/installation.md) for immutable CI-artifact verification. Keep this map current with `/skill:maintain-verification-skill` when that companion skill is available.

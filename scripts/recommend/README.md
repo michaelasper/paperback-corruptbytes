@@ -18,7 +18,7 @@ times a recency factor. Recency uses the latest read or marker stamp per
 series with exponential decay. Half life defaults to 120 days and can be
 set with REC_HALF_LIFE_DAYS. Series from adult leaning sources get a
 1.25 times boost and an Adult source tag. The source list defaults to
-divascans, templetoons, and valirscans and can be set with
+divascans and valirscans. It can be set with
 REC_ADULT_SOURCES. The boost can be set with REC_ADULT_BOOST. Each
 entry reports daysAgo and recency.
 Writes the top series plus a tag profile to stdout.

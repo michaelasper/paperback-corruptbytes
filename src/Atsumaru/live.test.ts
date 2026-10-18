@@ -18,6 +18,7 @@ import {
   fetchJson,
 } from "./network.js";
 import {
+  contentRatingForAtsumaru,
   parseAvailableFilters,
   parseChapters,
   parseComicChapter,
@@ -205,25 +206,34 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
   });
 
   it("keeps detail ratings aligned with Atsumaru's authoritative index", async () => {
-    for (const [mangaId, expected] of [
+    const literalAnchors = new Map<string, ContentRating>([
       ["2VgNt", ContentRating.EVERYONE],
       ["cDiHx", ContentRating.MATURE],
       ["CM0wz", ContentRating.ADULT],
-      ["DJqV8", ContentRating.ADULT],
-      ["-aOD", ContentRating.EVERYONE],
-    ] as const) {
+    ]);
+    for (const mangaId of ["2VgNt", "cDiHx", "CM0wz", "DJqV8", "-aOD"]) {
       const ratingValue = await fetchJson(
         { url: buildMangaRatingUrl(mangaId), method: "GET" },
         { maxBytes: 1_024 },
       );
       const rating = parseMangaRatingResponse(ratingValue, mangaId);
-      assert.equal(rating?.id, mangaId);
+      assert.ok(rating, `${mangaId} returned no index rating document`);
+      assert.equal(rating.id, mangaId);
+      const expected = contentRatingForAtsumaru(rating);
       const details = await new AtsumaruClient().getMangaDetails(mangaId);
       assert.equal(
         details.mangaInfo.contentRating,
         expected,
         `${mangaId} production detail rating diverged from Atsumaru's index`,
       );
+      const anchor = literalAnchors.get(mangaId);
+      if (anchor !== undefined) {
+        assert.equal(
+          details.mangaInfo.contentRating,
+          anchor,
+          `${mangaId} lost its stable literal rating anchor`,
+        );
+      }
     }
   });
 

@@ -33,8 +33,8 @@ describe("Valir Scans live public contract", { skip: !live }, () => {
   it("serves real covers and safe multi-word metadata IDs", async () => {
     await assertNovelDashMetadataContract(VALIR_SCANS_SITE, {
       kind: "comic",
-      slug: "insos-law",
-      title: "Inso’s Law",
+      slug: "my-life-as-an-internet-novel",
+      title: "My Life as an Internet Novel",
       expectedTags: [
         { id: "school-life", title: "School Life" },
         { id: "slice-of-life", title: "Slice of Life" },

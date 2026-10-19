@@ -435,16 +435,17 @@ describe("Atsumaru client cache and identity boundaries", () => {
       page: 1,
       hits: [{ document: { id: "oJQ4o", title: "Archive Hero", isAdult: false } }],
     });
-    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
-
-    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
-
-    assert.deepEqual(
-      chapters.map(({ chapterId }) => chapterId),
-      ["h4j-gl", "wZieNneB", "_rmrsb"],
+    // A transport failure is not retained by the chapters cache, so a
+    // duplicated candidate would reach the transport a second time. An
+    // empty chapter list would be served from the cache instead.
+    transport.bodies.set(
+      buildAllChaptersUrl("oJQ4o"),
+      new Error("original chapter transport failure"),
     );
-    assert.ok(
-      chapters.every(({ additionalInfo }) => additionalInfo?.[CANONICAL_MANGA_ID_KEY] === "oJQ4o"),
+
+    await assert.rejects(
+      new AtsumaruClient(transport).getChapters(sourceManga),
+      /original chapter transport failure/,
     );
     assert.equal(transport.calls.filter((url) => url === buildAllChaptersUrl("oJQ4o")).length, 1);
     assert.deepEqual(transport.calls, [

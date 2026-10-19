@@ -237,9 +237,11 @@ const chapterSourceManga = (sourceManga: SourceManga): SourceManga => {
       if (key === SCANLATOR_METADATA_KEY || key === CANONICAL_MANGA_ID_KEY) continue;
       if (typeof value === "string") additionalInfo[key] = value;
     }
-    const format = storedAdditionalInfo.format;
-    if (typeof format === "string" && !Object.hasOwn(additionalInfo, "format")) {
-      additionalInfo.format = format;
+    if (!Object.hasOwn(additionalInfo, "format")) {
+      const format = storedAdditionalInfo.format;
+      if (typeof format === "string") {
+        additionalInfo.format = format;
+      }
     }
   }
   const thumbnailUrl = mangaInfo.thumbnailUrl;

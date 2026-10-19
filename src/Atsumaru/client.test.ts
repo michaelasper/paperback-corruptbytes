@@ -768,6 +768,33 @@ describe("Atsumaru client cache and identity boundaries", () => {
     assert.deepEqual(chapters[0]?.sourceManga.mangaInfo.secondaryTitles, ["Bridge Hero Alt"]);
   });
 
+  it("loads chapters when an own-enumerable format getter throws on a second read", async () => {
+    const transport = new FakeTransport();
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
+    const sourceManga = manga("oJQ4o");
+    const additionalInfo: Record<string, string> = { [CANONICAL_MANGA_ID_KEY]: "oJQ4o" };
+    let formatReads = 0;
+    Object.defineProperty(additionalInfo, "format", {
+      enumerable: true,
+      configurable: true,
+      get(): string {
+        formatReads += 1;
+        if (formatReads > 1) throw new Error("format getter read more than once");
+        return "comic";
+      },
+    });
+    sourceManga.mangaInfo.additionalInfo = additionalInfo;
+
+    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
+
+    assert.deepEqual(
+      chapters.map(({ chapterId }) => chapterId),
+      ["h4j-gl", "wZieNneB", "_rmrsb"],
+    );
+    assert.equal(chapters[0]?.sourceManga.mangaInfo.additionalInfo?.format, "comic");
+    assert.equal(formatReads, 1);
+  });
+
   it("evicts malformed chapter envelopes before retrying a corrected response", async () => {
     const transport = new FakeTransport();
     transport.bodies.set(buildMangaPageUrl("oJQ4o"), MANGA_PAGE_RESPONSE);

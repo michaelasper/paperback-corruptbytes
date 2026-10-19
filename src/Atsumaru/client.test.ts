@@ -614,6 +614,160 @@ describe("Atsumaru client cache and identity boundaries", () => {
     );
   });
 
+  it("copies prototype-backed bridge manga fields onto returned chapters", async () => {
+    const secondaryTitles = ["Bridge Hero Alt"];
+    const artworkUrls = ["https://cdn.atsu.moe/static/artwork/bridge.webp"];
+    const tagGroups = [
+      { id: "genres", title: "Genres", tags: [{ id: "action", title: "Action" }] },
+    ];
+    class BridgeAdditionalInfo {
+      get atsumaruScanlators(): string {
+        return JSON.stringify({
+          scanlators: [{ id: "scan-manga-oJQ4o", name: "Archive Team" }],
+        });
+      }
+      get atsumaruCanonicalMangaId(): string {
+        return "oJQ4o";
+      }
+      get format(): string {
+        return "comic";
+      }
+    }
+    class BridgeMangaInfo {
+      get thumbnailUrl(): string {
+        return "https://cdn.atsu.moe/static/posters/bridge.webp";
+      }
+      get synopsis(): string {
+        return "Bridge synopsis.";
+      }
+      get primaryTitle(): string {
+        return "Bridge Hero";
+      }
+      get secondaryTitles(): string[] {
+        return secondaryTitles;
+      }
+      get contentRating(): ContentRating {
+        return ContentRating.MATURE;
+      }
+      get contentType(): "comic" {
+        return "comic";
+      }
+      get status(): string {
+        return "Ongoing";
+      }
+      get artist(): string {
+        return "Bridge Artist";
+      }
+      get author(): string {
+        return "Bridge Author";
+      }
+      get bannerUrl(): string {
+        return "https://cdn.atsu.moe/static/banners/bridge.webp";
+      }
+      get rating(): number {
+        return 0.875;
+      }
+      get tagGroups(): typeof tagGroups {
+        return tagGroups;
+      }
+      get artworkUrls(): string[] {
+        return artworkUrls;
+      }
+      get additionalInfo(): BridgeAdditionalInfo {
+        return new BridgeAdditionalInfo();
+      }
+      get shareUrl(): string {
+        return "https://atsu.moe/manga/oJQ4o";
+      }
+    }
+    const bridgeMangaInfo = new BridgeMangaInfo();
+    class BridgeSourceManga {
+      get mangaId(): string {
+        return "oJQ4o";
+      }
+      get mangaInfo(): BridgeMangaInfo {
+        return bridgeMangaInfo;
+      }
+      get chapterCount(): number {
+        return 7;
+      }
+      get newChapterCount(): number {
+        return 2;
+      }
+      get unreadChapterCount(): number {
+        return 3;
+      }
+    }
+    const transport = new FakeTransport();
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), {
+      chapters: [
+        {
+          id: "bridge-1",
+          scanlationMangaId: "scan-manga-oJQ4o",
+          title: "Chapter 1",
+          number: 1,
+          createdAt: 1690000000000,
+          index: 0,
+        },
+      ],
+    });
+
+    const chapters = await new AtsumaruClient(transport).getChapters(
+      new BridgeSourceManga() as unknown as SourceManga,
+    );
+
+    assert.equal(chapters.length, 1);
+    assert.equal(chapters[0]?.version, "Archive Team");
+    for (const chapter of chapters) {
+      const { sourceManga } = chapter;
+      assert.equal(Object.prototype.propertyIsEnumerable.call(sourceManga, "mangaId"), true);
+      assert.equal(sourceManga.mangaId, "oJQ4o");
+      assert.equal(sourceManga.chapterCount, 7);
+      assert.equal(sourceManga.newChapterCount, 2);
+      assert.equal(sourceManga.unreadChapterCount, 3);
+      for (const field of [
+        "primaryTitle",
+        "thumbnailUrl",
+        "synopsis",
+        "secondaryTitles",
+        "contentRating",
+      ]) {
+        assert.equal(
+          Object.prototype.propertyIsEnumerable.call(sourceManga.mangaInfo, field),
+          true,
+          field,
+        );
+      }
+      assert.deepEqual(sourceManga.mangaInfo, {
+        thumbnailUrl: "https://cdn.atsu.moe/static/posters/bridge.webp",
+        synopsis: "Bridge synopsis.",
+        primaryTitle: "Bridge Hero",
+        secondaryTitles: ["Bridge Hero Alt"],
+        contentRating: ContentRating.MATURE,
+        contentType: "comic",
+        status: "Ongoing",
+        artist: "Bridge Artist",
+        author: "Bridge Author",
+        bannerUrl: "https://cdn.atsu.moe/static/banners/bridge.webp",
+        rating: 0.875,
+        tagGroups: [{ id: "genres", title: "Genres", tags: [{ id: "action", title: "Action" }] }],
+        artworkUrls: ["https://cdn.atsu.moe/static/artwork/bridge.webp"],
+        additionalInfo: { format: "comic" },
+        shareUrl: "https://atsu.moe/manga/oJQ4o",
+      });
+      assert.equal(
+        Object.hasOwn(sourceManga.mangaInfo.additionalInfo ?? {}, "atsumaruScanlators"),
+        false,
+      );
+      assert.equal(
+        Object.hasOwn(sourceManga.mangaInfo.additionalInfo ?? {}, "atsumaruCanonicalMangaId"),
+        false,
+      );
+    }
+    secondaryTitles.push("Mutated after load");
+    assert.deepEqual(chapters[0]?.sourceManga.mangaInfo.secondaryTitles, ["Bridge Hero Alt"]);
+  });
+
   it("evicts malformed chapter envelopes before retrying a corrected response", async () => {
     const transport = new FakeTransport();
     transport.bodies.set(buildMangaPageUrl("oJQ4o"), MANGA_PAGE_RESPONSE);

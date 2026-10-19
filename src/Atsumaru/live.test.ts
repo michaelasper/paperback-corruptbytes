@@ -374,6 +374,43 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
     );
   });
 
+  it("recovers chapters when the stored canonical ID is lowercased", async () => {
+    // 68Fv carries an uppercase F. Its lowercased form is a different,
+    // unknown ID upstream and returns an empty chapter list.
+    const realMangaId = "68Fv";
+    const lowercasedMangaId = "68fv";
+    const current = parseMangaPage(
+      await getCachedJson(buildMangaPageUrl(realMangaId)),
+      realMangaId,
+    );
+    const mangled = {
+      ...current,
+      mangaId: lowercasedMangaId,
+      mangaInfo: {
+        ...current.mangaInfo,
+        additionalInfo: {
+          ...current.mangaInfo.additionalInfo,
+          [CANONICAL_MANGA_ID_KEY]: lowercasedMangaId,
+        },
+      },
+    };
+    const client = new AtsumaruClient({
+      fetchText: async (request) => JSON.stringify(await getCachedJson(request.url)),
+    });
+
+    const chapters = await client.getChapters(mangled);
+
+    assert.ok(
+      chapters.some(({ chapterId }) => chapterId === "JOY5r"),
+      "lowercased 68fv did not recover the 68Fv chapter list",
+    );
+    assert.ok(
+      chapters.every(
+        ({ additionalInfo }) => additionalInfo?.[CANONICAL_MANGA_ID_KEY] === realMangaId,
+      ),
+    );
+  });
+
   it("retains raw chapter IDs, order and reader content across four bounded series", async (context) => {
     const client = new AtsumaruClient();
     for (const mangaId of ["68Fv", "N7JpR", "oJQ4o", "-aOD"]) {

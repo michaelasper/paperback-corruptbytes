@@ -289,6 +289,158 @@ describe("Atsumaru client cache and identity boundaries", () => {
     ]);
   });
 
+  it("recovers chapters when the stored canonical ID has the wrong case", async () => {
+    const transport = new FakeTransport();
+    const sourceManga = manga("ojq4o");
+    sourceManga.mangaInfo.primaryTitle = "Archive Hero";
+    const searchUrl = buildSearchUrl(
+      { title: "Archive Hero", metadata: { adult: "all" } },
+      undefined,
+      1,
+    );
+    transport.bodies.set(buildAllChaptersUrl("ojq4o"), { chapters: [] });
+    transport.bodies.set(searchUrl, {
+      found: 1,
+      page: 1,
+      hits: [{ document: { id: "oJQ4o", title: "Archive Hero", isAdult: false } }],
+    });
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
+
+    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
+
+    assert.deepEqual(
+      chapters.map(({ chapterId }) => chapterId),
+      ["h4j-gl", "wZieNneB", "_rmrsb"],
+    );
+    assert.ok(
+      chapters.every(({ additionalInfo }) => additionalInfo?.[CANONICAL_MANGA_ID_KEY] === "oJQ4o"),
+    );
+    assert.deepEqual(transport.calls, [
+      buildAllChaptersUrl("ojq4o"),
+      searchUrl,
+      buildAllChaptersUrl("oJQ4o"),
+    ]);
+  });
+
+  it("recovers to the original manga ID when a retired canonical ID returns no chapters and title matching is ambiguous", async () => {
+    const transport = new FakeTransport();
+    const sourceManga = manga("oJQ4o");
+    sourceManga.mangaInfo.primaryTitle = "Archive Hero";
+    sourceManga.mangaInfo.additionalInfo = { [CANONICAL_MANGA_ID_KEY]: "retired-id" };
+    const searchUrl = buildSearchUrl(
+      { title: "Archive Hero", metadata: { adult: "all" } },
+      undefined,
+      1,
+    );
+    transport.bodies.set(buildAllChaptersUrl("retired-id"), { chapters: [] });
+    transport.bodies.set(searchUrl, {
+      found: 2,
+      page: 1,
+      hits: [
+        { document: { id: "aaa1", title: "Archive Hero", isAdult: false } },
+        { document: { id: "bbb2", title: "Archive Hero", isAdult: false } },
+      ],
+    });
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
+
+    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
+
+    assert.deepEqual(
+      chapters.map(({ chapterId }) => chapterId),
+      ["h4j-gl", "wZieNneB", "_rmrsb"],
+    );
+    assert.ok(
+      chapters.every(({ additionalInfo }) => additionalInfo?.[CANONICAL_MANGA_ID_KEY] === "oJQ4o"),
+    );
+    assert.deepEqual(transport.calls, [
+      buildAllChaptersUrl("retired-id"),
+      searchUrl,
+      buildAllChaptersUrl("oJQ4o"),
+    ]);
+  });
+
+  it("keeps recovering past a malformed recovery response", async () => {
+    const transport = new FakeTransport();
+    const sourceManga = manga("oJQ4o");
+    sourceManga.mangaInfo.primaryTitle = "Archive Hero";
+    sourceManga.mangaInfo.additionalInfo = { [CANONICAL_MANGA_ID_KEY]: "retired-id" };
+    const searchUrl = buildSearchUrl(
+      { title: "Archive Hero", metadata: { adult: "all" } },
+      undefined,
+      1,
+    );
+    transport.bodies.set(buildAllChaptersUrl("retired-id"), { chapters: [] });
+    transport.bodies.set(searchUrl, {
+      found: 1,
+      page: 1,
+      hits: [{ document: { id: "AbC12", title: "Archive Hero", isAdult: false } }],
+    });
+    transport.bodies.set(buildAllChaptersUrl("AbC12"), { chapters: null });
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
+
+    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
+
+    assert.deepEqual(
+      chapters.map(({ chapterId }) => chapterId),
+      ["h4j-gl", "wZieNneB", "_rmrsb"],
+    );
+    assert.ok(
+      chapters.every(({ additionalInfo }) => additionalInfo?.[CANONICAL_MANGA_ID_KEY] === "oJQ4o"),
+    );
+    assert.deepEqual(transport.calls, [
+      buildAllChaptersUrl("retired-id"),
+      searchUrl,
+      buildAllChaptersUrl("AbC12"),
+      buildAllChaptersUrl("oJQ4o"),
+    ]);
+  });
+
+  it("returns an empty list after bounded recovery when every candidate is chapterless", async () => {
+    const transport = new FakeTransport();
+    const sourceManga = manga("oJQ4o");
+    sourceManga.mangaInfo.primaryTitle = "Archive Hero";
+    sourceManga.mangaInfo.additionalInfo = { [CANONICAL_MANGA_ID_KEY]: "retired-id" };
+    const searchUrl = buildSearchUrl(
+      { title: "Archive Hero", metadata: { adult: "all" } },
+      undefined,
+      1,
+    );
+    transport.bodies.set(buildAllChaptersUrl("retired-id"), { chapters: [] });
+    transport.bodies.set(searchUrl, {
+      found: 1,
+      page: 1,
+      hits: [{ document: { id: "AbC12", title: "Archive Hero", isAdult: false } }],
+    });
+    transport.bodies.set(buildAllChaptersUrl("AbC12"), { chapters: [] });
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), { chapters: [] });
+
+    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
+
+    assert.deepEqual(chapters, []);
+    assert.deepEqual(transport.calls, [
+      buildAllChaptersUrl("retired-id"),
+      searchUrl,
+      buildAllChaptersUrl("AbC12"),
+      buildAllChaptersUrl("oJQ4o"),
+    ]);
+  });
+
+  it("makes no recovery requests when the stored canonical ID already returns chapters", async () => {
+    const transport = new FakeTransport();
+    const sourceManga = manga("oJQ4o");
+    sourceManga.mangaInfo.primaryTitle = "Archive Hero";
+    const chaptersUrl = buildAllChaptersUrl("oJQ4o");
+    transport.bodies.set(chaptersUrl, CHAPTERS_RESPONSE);
+
+    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
+
+    assert.deepEqual(
+      chapters.map(({ chapterId }) => chapterId),
+      ["h4j-gl", "wZieNneB", "_rmrsb"],
+    );
+    assert.deepEqual(transport.calls, [chaptersUrl]);
+  });
+
   it("preserves scanlator labels across a Paperback JavaScript runtime reload", async () => {
     const detailTransport = new FakeTransport();
     setDetailResponses(detailTransport);

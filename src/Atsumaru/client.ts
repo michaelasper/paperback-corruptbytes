@@ -469,25 +469,35 @@ export class AtsumaruClient {
     if (chapters.length === 0) {
       // Upstream answers an empty list for unknown, retired, or wrongly-cased
       // IDs instead of an error, so a stale stored canonical ID must not be
-      // trusted when it yields nothing.
+      // trusted when it yields nothing. The original ID is the identity the
+      // user opened, so it is retried before the title-resolved guess.
       const tried = new Set([mangaId]);
       const candidates: string[] = [];
+      const original = validMangaId(sourceManga.mangaId);
+      if (original && !tried.has(original)) candidates.push(original);
       let titleCandidate: string | undefined;
       try {
         titleCandidate = await this.titleResolvedMangaId(sourceManga);
       } catch {
         titleCandidate = undefined;
       }
-      if (titleCandidate && !tried.has(titleCandidate)) candidates.push(titleCandidate);
-      const original = validMangaId(sourceManga.mangaId);
-      if (original && !tried.has(original) && !candidates.includes(original)) {
-        candidates.push(original);
+      if (titleCandidate && !tried.has(titleCandidate) && !candidates.includes(titleCandidate)) {
+        candidates.push(titleCandidate);
       }
+      let originalError: unknown;
+      let originalThrew = false;
       for (const candidate of candidates.slice(0, 2)) {
         let recovered: Chapter[];
         try {
           recovered = await this.fetchChapters(sourceManga, candidate);
-        } catch {
+        } catch (error: unknown) {
+          // A title candidate failure is a failed guess and stays swallowed.
+          // An original ID failure is remembered, since that identity may be
+          // failing for a real transport or contract reason.
+          if (candidate === original) {
+            originalError = error;
+            originalThrew = true;
+          }
           continue;
         }
         if (recovered.length > 0) {
@@ -495,6 +505,7 @@ export class AtsumaruClient {
           break;
         }
       }
+      if (chapters.length === 0 && originalThrew) throw originalError;
     }
     if (!includeAlternates) chapters = newestTranslationPerNumber(chapters);
     // Atsumaru's createdAt is an import timestamp, not a reliable first-seen

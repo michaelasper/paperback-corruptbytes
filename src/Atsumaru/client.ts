@@ -371,7 +371,10 @@ export class AtsumaruClient {
   private async resolveCanonicalMangaId(sourceManga: SourceManga): Promise<string> {
     const stored = canonicalMangaIdFromManga(sourceManga);
     if (stored) return stored;
+    return (await this.titleResolvedMangaId(sourceManga)) ?? sourceManga.mangaId;
+  }
 
+  private async titleResolvedMangaId(sourceManga: SourceManga): Promise<string | undefined> {
     const original = sourceManga.mangaId;
     const primaryTitle = sourceManga.mangaInfo.primaryTitle;
     const titleKeys = new Set(
@@ -379,7 +382,7 @@ export class AtsumaruClient {
         .map(titleIdentity)
         .filter(Boolean),
     );
-    if (titleKeys.size === 0) return original;
+    if (titleKeys.size === 0) return undefined;
 
     try {
       const page = await this.getSearchPage(
@@ -399,7 +402,7 @@ export class AtsumaruClient {
       // Resolution is a compatibility aid. Keep the persisted ID usable when
       // search is temporarily unavailable or returns a changed contract.
     }
-    return original;
+    return undefined;
   }
 
   async getMangaDetails(mangaId: string): Promise<SourceManga> {
@@ -430,12 +433,7 @@ export class AtsumaruClient {
     }
   }
 
-  async getChapters(
-    sourceManga: SourceManga,
-    _sinceDate?: Date,
-    includeAlternates = true,
-  ): Promise<Chapter[]> {
-    const mangaId = await this.resolveCanonicalMangaId(sourceManga);
+  private async fetchChapters(sourceManga: SourceManga, mangaId: string): Promise<Chapter[]> {
     const chaptersUrl = buildAllChaptersUrl(mangaId);
     const chaptersValue = await this.cachedJson(
       this.chaptersCache,
@@ -443,9 +441,8 @@ export class AtsumaruClient {
       chaptersUrl,
       (value) => value,
     );
-    let chapters: Chapter[];
     try {
-      chapters = parseChapters(
+      return parseChapters(
         chaptersValue,
         chapterSourceManga(sourceManga),
         scanlatorsFromManga(sourceManga),
@@ -459,6 +456,45 @@ export class AtsumaruClient {
     } catch (error: unknown) {
       this.chaptersCache.delete(chaptersUrl);
       throw error;
+    }
+  }
+
+  async getChapters(
+    sourceManga: SourceManga,
+    _sinceDate?: Date,
+    includeAlternates = true,
+  ): Promise<Chapter[]> {
+    const mangaId = await this.resolveCanonicalMangaId(sourceManga);
+    let chapters = await this.fetchChapters(sourceManga, mangaId);
+    if (chapters.length === 0) {
+      // Upstream answers an empty list for unknown, retired, or wrongly-cased
+      // IDs instead of an error, so a stale stored canonical ID must not be
+      // trusted when it yields nothing.
+      const tried = new Set([mangaId]);
+      const candidates: string[] = [];
+      let titleCandidate: string | undefined;
+      try {
+        titleCandidate = await this.titleResolvedMangaId(sourceManga);
+      } catch {
+        titleCandidate = undefined;
+      }
+      if (titleCandidate && !tried.has(titleCandidate)) candidates.push(titleCandidate);
+      const original = validMangaId(sourceManga.mangaId);
+      if (original && !tried.has(original) && !candidates.includes(original)) {
+        candidates.push(original);
+      }
+      for (const candidate of candidates.slice(0, 2)) {
+        let recovered: Chapter[];
+        try {
+          recovered = await this.fetchChapters(sourceManga, candidate);
+        } catch {
+          continue;
+        }
+        if (recovered.length > 0) {
+          chapters = recovered;
+          break;
+        }
+      }
     }
     if (!includeAlternates) chapters = newestTranslationPerNumber(chapters);
     // Atsumaru's createdAt is an import timestamp, not a reliable first-seen

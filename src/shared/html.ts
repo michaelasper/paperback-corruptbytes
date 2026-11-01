@@ -1,6 +1,6 @@
 import { ContentRating } from "@paperback/types";
-import { load } from "cheerio";
 
+import { load } from "./html-parser.js";
 import { resolveHttpsUrl } from "./url.js";
 
 const BLOCK_TAG =

@@ -6,8 +6,8 @@ import {
   type SourceManga,
   type Tag,
 } from "@paperback/types";
-import { load } from "cheerio";
 
+import { load } from "./html-parser.js";
 import { contentRatingForTags, plainTextFromHtml, sanitizeChapterHtml } from "./html.js";
 import { decodePaperbackIdComponent, encodePaperbackIdComponent, validateOpaqueId } from "./ids.js";
 import {

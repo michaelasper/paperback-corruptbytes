@@ -16,11 +16,7 @@ export const AJAX_URL = `${DOMAIN}/wp-admin/admin-ajax.php`;
 export const AUTH_REFRESH_URL = AJAX_URL;
 
 const normalize = (value: string | undefined): string =>
-  (value ?? "")
-    .trim()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/\s+/g, " ");
+  (value ?? "").trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ");
 
 const numericId = (value: string): string => {
   const result = value.trim();

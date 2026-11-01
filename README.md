@@ -43,17 +43,18 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 ## Available extensions
 
-| Extension                                                                        | Status | Best for                                                                                                                |
-| -------------------------------------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------- |
-| <img src="src/Atsumaru/static/icon.png" alt="" width="28"> **Atsumaru**          | Alpha  | Comics, novels, all anonymous discovery rails, 6,134-tag search, and exported-library chapter compatibility             |
-| <img src="src/DivaScans/static/icon.png" alt="" width="28"> **Diva Scans**       | Alpha  | Comics, novels, full paginated histories, detailed search filters, and account-aware chapter access                     |
-| <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | Alpha  | Complete Madara discovery/search, exported numeric-ID compatibility, and automatically authorized image readers         |
-| <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | Alpha  | A large safe-mode catalog, detailed range/rating/availability filters, and stable comic reader slugs                    |
-| <img src="src/QiManga/static/icon.png" alt="" width="28"> **Qi Manga**           | Alpha  | Comics, novels, complete discovery, live filters, coin-lock visibility, and first-party purchased-chapter access        |
-| <img src="src/RinkoComics/static/icon.png" alt="" width="28"> **Rinko Comics**   | Alpha  | Public comics, live genre/sort search, complete nonce-paginated histories, and credential-neutral CDN readers           |
-| <img src="src/Thunderscans/static/icon.png" alt="" width="28"> **Thunder Scans** | Alpha  | Comics, novels, complete discovery/search, coin-lock visibility, and chapters already available to your Thunder account |
-| <img src="src/ValirScans/static/icon.png" alt="" width="28"> **Valir Scans**     | Alpha  | Comics, novels, complete multi-page chapter lists, route-safe readers, and first-party account sessions                 |
-| <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans**   | Alpha  | Comics, novels, rich filters, paid-state metadata, and chapters already purchased through Vortex                        |
+| Extension                                                                        | Status | Best for                                                                                         |
+| -------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| <img src="src/Atsumaru/static/icon.png" alt="" width="28"> **Atsumaru**          | 1.0.0  | Comics, novels, anonymous discovery, taxonomy search, and exported-library chapter compatibility |
+| <img src="src/DivaScans/static/icon.png" alt="" width="28"> **Diva Scans**       | 1.0.0  | Comics, novels, paginated histories, search filters, and account-aware chapter access            |
+| <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | 1.0.0  | Madara discovery/search, numeric-ID compatibility, and authorized image readers                  |
+| <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | 1.0.0  | Safe-mode catalog, range/rating/availability filters, and stable comic reader slugs              |
+| <img src="src/QiManga/static/icon.png" alt="" width="28"> **Qi Manga**           | 1.0.0  | Comics, novels, discovery, filters, lock visibility, and purchased-chapter access                |
+| <img src="src/RinkoComics/static/icon.png" alt="" width="28"> **Rinko Comics**   | 1.0.0  | Public comics, genre/sort search, nonce-paginated histories, and credential-neutral readers      |
+| <img src="src/Rokari/static/icon.png" alt="" width="28"> **Rokari**              | 1.0.0  | Anonymous catalogs, genre and keyword search, chapter histories, and comic readers               |
+| <img src="src/Thunderscans/static/icon.png" alt="" width="28"> **Thunder Scans** | 1.0.0  | Comics, novels, discovery/search, lock visibility, and purchased-chapter access                  |
+| <img src="src/ValirScans/static/icon.png" alt="" width="28"> **Valir Scans**     | 1.0.0  | Comics, novels, multi-page histories, route-safe readers, and first-party sessions               |
+| <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans**   | 1.0.0  | Comics, novels, filters, paid-state metadata, and purchased-chapter access                       |
 
 ### Atsumaru
 
@@ -97,6 +98,12 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 - Complete chapter histories use each series page's fresh first-party nonce and validate the terminal AJAX page before exposing results.
 - Only chapters marked with Rinko's exact anonymous-public state are listed; readers use ordered images from the dedicated Rinko CDN without accounts, cookies, coins, purchases, or challenge bypasses.
 
+### Rokari
+
+- Anonymous recently updated and popular catalogs, keyword search, and genre discovery.
+- Stable series and chapter slugs, complete page-listed histories, and ordered comic images.
+- No account required.
+
 ### Thunder Scans
 
 - Popular today, editor’s picks, latest comics, latest novels, recently added titles, and the full genre catalog.
@@ -122,9 +129,13 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 1. Open the [repository installation page][install-page] on the device running Paperback.
 2. Add **paperback-corruptbytes** as a repository.
-3. Install any combination of Atsumaru, Diva Scans, MadaraDex, Mgeko, Qi Manga, Rinko Comics, Thunder Scans, Valir Scans, and Vortex Scans.
+3. Install any combination of Atsumaru, Diva Scans, MadaraDex, Mgeko, Qi Manga, Rinko Comics, Rokari, Thunder Scans, Valir Scans, and Vortex Scans.
 
 Paperback applies profile visibility before listing repository sources. Rinko Comics and Valir Scans are marked **Mature**; Diva Scans and Qi Manga are marked **Adult** because their catalogs include mature or explicit genres. Sign in to Paperback and enable the corresponding content level if either source is absent from the extension list. If the repository was added while a release was still deploying, refresh it after the public repository page shows the new source.
+
+### Updating from alpha
+
+Refresh the saved repository, update the installed extensions to **1.0.0**, then reopen Paperback. This release fixes a parser dependency's cold-start crash in the app's JavaScript runtime. Library and chapter IDs are unchanged; do not delete your library to update. If an extension still shows **UNLOADED**, report its version, Paperback version, and extension error/log output. An unloaded label alone does not identify its cause.
 
 ## Shiba theme
 
@@ -148,7 +159,7 @@ Thunder Scans, Qi Manga, Valir Scans, Diva Scans, and Vortex Scans can expose ch
 
 Paperback’s embedded browser does not currently provide a secure external-browser or passkey handoff. If your normal sign-in depends on a passkey, use another first-party method the source offers inside the embedded view.
 
-MadaraDex does not require a user account. Its short-lived anonymous reader token refreshes automatically; the settings screen also offers a manual refresh and first-party verification view. Atsumaru, Mgeko, and Rinko Comics do not require authentication.
+MadaraDex does not require a user account. Its short-lived anonymous reader token refreshes automatically; the settings screen also offers a manual refresh and first-party verification view. Atsumaru, Mgeko, Rinko Comics, and Rokari do not require authentication.
 
 ## Install from source
 
@@ -182,15 +193,18 @@ npm ci
 npm test
 npm run conformance
 npm run bundle
+npm run test:monte-carlo
 npm run test:live
 npm run test:live:random
 ```
 
-`npm test` covers deterministic fixtures, authentication boundaries, the shared engine, and seeded Monte Carlo invariants for Qi Manga and Rinko Comics IDs, chapter timelines, image ordering, and hostile markup. `npm run test:live` checks all ten public protocols, including Atsumaru’s full anonymous rails and exported-library IDs, Rinko's nonce-paginated public history, complete multi-page chapter histories, discovery, filters, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
+`npm test` covers deterministic fixtures, authentication boundaries, the shared engine, and seeded Monte Carlo invariants. `npm run test:monte-carlo` runs 2,000 generated reader scenarios across all ten sources (five seeds, 40 scenarios per source), 200 cold starts with varied persisted state, 1,000 binary-decoder samples, and the deeper Qi Manga/Rinko Comics ID, timeline, and hostile-markup suites. Failures report replay seeds and iteration numbers. Builds also cold-start the actual release bundles without Node/browser globals. These checks are not native Paperback UI verification. `npm run test:live` checks all ten public protocols, including Atsumaru’s full anonymous rails and exported-library IDs, Rinko's nonce-paginated public history, complete multi-page chapter histories, discovery, filters, anonymous CDN authorization, readable comics and novels, and real locked states; it never attempts a purchase.
 
 Scheduled CI gates nine public protocols. MadaraDex runs as a separate non-gating probe because GitHub-hosted requests can receive HTTP 403. Inspect the probe's logs; a green workflow does not mean MadaraDex passed.
 
-`npm run test:live:random` samples catalogs, series, complete chapter lists, and readable chapters for nine sources through production parsers. It excludes Rokari. It prints the random seed for replay; set `LIVE_RANDOM_SEED` to that unsigned 32-bit value and `LIVE_RANDOM_SAMPLES` from 1 through 8 to reproduce or widen a run. Independent source jobs use stable per-source random streams and a bounded worker pool; set `LIVE_RANDOM_CONCURRENCY` from 1 through 8 to tune the pool without changing what a seed selects (the default is 3).
+`npm run test:live:random` samples catalogs, series, complete chapter lists, and readable chapters for all ten sources through production parsers, including Rokari. It prints the random seed for replay; set `LIVE_RANDOM_SEED` to that unsigned 32-bit value and `LIVE_RANDOM_SAMPLES` from 1 through 8 to reproduce or widen a run. Independent source jobs use stable per-source random streams and a bounded worker pool; set `LIVE_RANDOM_CONCURRENCY` from 1 through 8 to tune the pool without changing what a seed selects (the default is 3).
+
+Dependencies use the newest published compatible versions. The upstream Paperback SDK/toolchain still publish their newest builds under the `alpha` npm tag; their package labels do not make these extension releases prereleases.
 
 Use [the project verification skill](.pi/skills/verify-paperback/SKILL.md) and its feature map for launch, doctor, live drives, retained evidence, and cleanup. Invoke it in Pi with `/skill:verify-paperback` after reloading skills.
 

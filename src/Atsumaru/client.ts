@@ -215,12 +215,7 @@ const canonicalMangaIdFromChapter = (chapter: Chapter): string | undefined =>
   validMangaId(chapter.additionalInfo?.[CANONICAL_MANGA_ID_KEY]);
 
 const titleIdentity = (value: string): string =>
-  value
-    .normalize("NFKC")
-    .replace(/[‘’]/g, "'")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLocaleLowerCase();
+  value.normalize("NFKC").replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim().toLocaleLowerCase();
 
 const copyArrayValue = <T>(value: T): T => (Array.isArray(value) ? ([...value] as T) : value);
 

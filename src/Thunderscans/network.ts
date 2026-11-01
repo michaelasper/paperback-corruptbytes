@@ -14,11 +14,7 @@ export const LOGIN_URL = `${DOMAIN}/login/`;
 const FORM_HEADERS = { "content-type": "application/x-www-form-urlencoded; charset=UTF-8" };
 
 export const normalizeSearchTerm = (value: string): string =>
-  value
-    .trim()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/\s+/g, " ");
+  value.trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ");
 
 const parameterString = (entries: [string, string | undefined][]): string =>
   entries

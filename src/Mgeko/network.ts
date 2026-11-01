@@ -12,11 +12,7 @@ export const BROWSE_URL = `${DOMAIN}/browse-comics/data/`;
 type QueryValue = boolean | number | string | undefined;
 
 export const normalizeSearchTerm = (value: string): string =>
-  value
-    .trim()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/\s+/g, " ");
+  value.trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ");
 
 const queryString = (values: [string, QueryValue][]): string =>
   values

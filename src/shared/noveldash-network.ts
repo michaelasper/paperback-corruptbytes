@@ -80,11 +80,7 @@ const boundedChapterCount = (value: number | undefined, fallback: number): numbe
     : Math.max(0, Math.min(100_000, Math.trunc(value)));
 
 export const normalizeNovelDashSearchTerm = (value: string): string =>
-  value
-    .trim()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/\s+/g, " ");
+  value.trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ");
 
 export const buildNovelDashCatalogUrl = (
   site: NovelDashSite,

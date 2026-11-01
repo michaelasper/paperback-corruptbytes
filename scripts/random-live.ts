@@ -17,6 +17,7 @@ import { QiMangaClient } from "../src/QiManga/client.js";
 import { isNeutralMediaUrl as isQiMangaMediaUrl } from "../src/QiManga/network.js";
 import { RinkoComicsClient } from "../src/RinkoComics/client.js";
 import { isRinkoMediaUrl } from "../src/RinkoComics/network.js";
+import { RokariClient } from "../src/Rokari/client.js";
 import { NovelDashClient } from "../src/shared/noveldash-client.js";
 import type { NovelDashSite } from "../src/shared/noveldash-models.js";
 import { ThunderClient } from "../src/Thunderscans/client.js";
@@ -485,6 +486,21 @@ const probeRinkoComics = async (random: DeterministicRandom): Promise<ProbeStats
   );
 };
 
+const probeRokari = async (random: DeterministicRandom): Promise<ProbeStats> => {
+  const client = new RokariClient();
+  const pages = [
+    await client.getCatalogPage(random.pick(["update", "popular"])),
+    await client.searchComics(random.pick(searchTerms.filter(Boolean))),
+  ];
+  return probeSeries(
+    random,
+    "Rokari",
+    pages.flatMap((page) => page.items),
+    (mangaId) => client.getDetailsAndChapters(mangaId),
+    (chapter) => client.getChapterDetails(chapter),
+  );
+};
+
 const probeThunder = async (random: DeterministicRandom): Promise<ProbeStats> => {
   const client = new ThunderClient();
   const sorts = ["update", "latest", "popular", "title", "titlereverse"] as const;
@@ -592,6 +608,7 @@ const probes = [
   ["Mgeko", probeMgeko],
   ["Qi Manga", probeQiManga],
   ["Rinko Comics", probeRinkoComics],
+  ["Rokari", probeRokari],
   ["Thunder", probeThunder],
   ["Valir Scans", (random: DeterministicRandom) => probeNovelDash(VALIR_SCANS_SITE, random)],
   ["Vortex", probeVortex],

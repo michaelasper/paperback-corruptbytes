@@ -1,5 +1,6 @@
 {
   "name": "paperback-corruptbytes",
+  "version": "1.0.0",
   "private": true,
   "description": "High-care Paperback sources for reliable catalogs, search, and legitimately accessible chapters.",
   "homepage": "https://michaelasper.github.io/paperback-corruptbytes/",
@@ -19,7 +20,8 @@
     "format:check": "oxfmt --check .",
     "conformance": "npm run tsc && npm run lint:check && npm run format:check && npm run verify:versions",
     "bundle": "paperback-cli bundle && node scripts/shiba-theme.mjs package && npm run verify:bundles",
-    "verify:bundles": "node scripts/verify-bundles.mjs",
+    "verify:bundles": "node scripts/verify-bundles.mjs && npm run verify:runtime",
+    "verify:runtime": "node scripts/verify-runtime.mjs",
     "verify:published": "node scripts/verify-published-repository.mjs",
     "verify:versions": "node scripts/verify-version-bumps.mjs",
     "serve": "paperback-cli serve",
@@ -38,16 +40,17 @@
     "test:live:thunder": "THUNDER_LIVE_TESTS=1 tsx --test src/Thunderscans/live.test.ts",
     "test:live:valir": "VALIR_LIVE_TESTS=1 tsx --test src/ValirScans/live.test.ts",
     "test:live:random": "tsx scripts/random-live.ts",
+    "test:monte-carlo": "tsx --test src/*/monte-carlo.test.ts src/shared/runtime.test.ts scripts/runtime-contract.test.mjs",
     "test:parsers": "tsx --test src/*/parsers.test.ts"
   },
   "devDependencies": {
     "@paperback/toolchain": "^1.0.0-alpha.92",
     "@paperback/types": "^1.0.0-alpha.92",
     "cheerio": "^1.2.0",
-    "oxfmt": "^0.72.0",
-    "oxlint": "^1.87.0",
-    "oxlint-tsgolint": "^7.0.2004",
-    "rolldown": "^1.2.13",
+    "oxfmt": "^0.75.0",
+    "oxlint": "^1.90.0",
+    "oxlint-tsgolint": "^7.0.2005",
+    "rolldown": "^1.2.16",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   },

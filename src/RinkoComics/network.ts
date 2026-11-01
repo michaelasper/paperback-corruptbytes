@@ -163,11 +163,7 @@ export const normalizeSearchTerm = (value: unknown): string => {
   if (hasUnpairedSurrogate(value) || hasUnsafeTextCodePoint(value)) {
     throw new Error("Rinko Comics search term is invalid.");
   }
-  const normalized = value
-    .trim()
-    .replace(/[‘’']/g, " ")
-    .replace(/[“”]/g, '"')
-    .replace(/\s+/g, " ");
+  const normalized = value.trim().replace(/[‘’']/g, " ").replace(/[“”]/g, '"').replace(/\s+/g, " ");
   if (normalized.length > MAX_SEARCH_LENGTH) {
     throw new Error("Rinko Comics search term is too long.");
   }

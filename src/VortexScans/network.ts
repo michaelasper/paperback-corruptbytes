@@ -17,11 +17,7 @@ export interface SearchMetadata extends JSONObject {
 type QueryValue = boolean | number | string | null | undefined;
 
 export const normalizeSearchTerm = (value: string): string =>
-  value
-    .trim()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/\s+/g, " ");
+  value.trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ");
 
 export const buildApiUrl = (endpoint: string, query: Record<string, QueryValue> = {}): string => {
   const cleanEndpoint = endpoint.replace(/^\/+|\/+$/g, "");

@@ -49,7 +49,7 @@ printf '%s\n' "$doctor_status" > "$VERIFY_EVIDENCE/doctor.exit"
 test "$doctor_status" -eq 0 || exit "$doctor_status"
 ```
 
-It validates source IDs, versions, metadata, icons, JavaScript artifacts, and exact packaged theme bytes. It does not prove JavaScript freshness after source edits. If production files changed since Launch, rebuild before driving. For a server or browser, also perform the ownership/readiness check in its feature recipe. Never drive someone else's instance.
+It validates source IDs, versions, metadata, icons, JavaScript artifacts, and exact packaged theme bytes, then evaluates and initialises all ten bundles without Node/browser globals. It does not prove JavaScript freshness after source edits. If production files changed since Launch, rebuild before driving. For a server or browser, also perform the ownership/readiness check in its feature recipe. Never drive someone else's instance.
 
 ## Drive
 
@@ -105,7 +105,8 @@ No new helper scripts or browser dependencies are shipped with this skill. Reuse
 - `npm run verify:bundles` performs Doctor.
 - `npm run test:live:atsumaru` performs the baseline drive.
 - `npm run test:live` exercises every source gate.
-- `npm run test:live:random` probes nine sources, not Rokari. Record `LIVE_RANDOM_SEED`, `LIVE_RANDOM_SAMPLES`, and `LIVE_RANDOM_CONCURRENCY` for replay. It makes real requests.
+- `npm run test:monte-carlo` runs seeded offline reader simulations and cold-start checks for every source.
+- `npm run test:live:random` probes all ten sources, including Rokari. Record `LIVE_RANDOM_SEED`, `LIVE_RANDOM_SAMPLES`, and `LIVE_RANDOM_CONCURRENCY` for replay. It makes real requests.
 - `node scripts/shiba-theme.mjs verify-published` checks a deployed theme. Supply both published environment variables as shown in [the theme recipe](features/theme.md).
 
 See [installation](features/installation.md) for immutable CI-artifact verification. Keep this map current with `/skill:maintain-verification-skill` when that companion skill is available.

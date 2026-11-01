@@ -1,6 +1,5 @@
-import { load } from "cheerio";
-
 import { utf8ByteLength } from "./async-cache.js";
+import { load } from "./html-parser.js";
 
 export interface NovelDashFlightDocument {
   stream: string;

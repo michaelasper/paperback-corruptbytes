@@ -13,7 +13,11 @@ void test("every source metadata declares a valid extension id and version", asy
   for (const id of sources) {
     const config = (await import(`../src/${id}/pbconfig.js`)).default;
     assert.equal(typeof config.name, "string", `${id} needs a name`);
-    assert.match(config.version ?? "", /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/, `${id} needs semver`);
+    assert.match(
+      config.version ?? "",
+      /^\d+\.\d+\.\d+$/,
+      `${id} must declare a stable release version`,
+    );
     assert.equal(config.icon, "icon.png", `${id} needs an icon`);
     assert.ok(
       Array.isArray(config.capabilities) && config.capabilities.length > 0,

@@ -5,9 +5,9 @@ import {
   type SourceManga,
   type Tag,
 } from "@paperback/types";
-import { load, type Cheerio, type CheerioAPI } from "cheerio";
 import type { AnyNode } from "domhandler";
 
+import { load, type Cheerio, type CheerioAPI } from "../shared/html-parser.js";
 import { contentRatingForTags, plainTextFromHtml, sanitizeChapterHtml } from "../shared/html.js";
 import { encodePaperbackIdComponent } from "../shared/ids.js";
 import { resolveHttpsUrl, urlPathSlug } from "../shared/url.js";

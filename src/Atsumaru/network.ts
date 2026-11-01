@@ -94,11 +94,7 @@ const assertDynamicQueryLength = (query: string, context: "search" | "discovery"
 };
 
 export const normalizeSearchTerm = (value: string | undefined): string =>
-  (value ?? "")
-    .trim()
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
-    .replace(/\s+/g, " ");
+  (value ?? "").trim().replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/\s+/g, " ");
 
 /**
  * Validate and decode one opaque Atsumaru identifier. IDs are not slugs: no

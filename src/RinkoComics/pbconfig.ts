@@ -4,7 +4,7 @@ export default {
   name: "Rinko Comics",
   description:
     "Browse Rinko Comics and read chapters the site explicitly publishes for anonymous public access.",
-  version: "1.0.0-alpha.4",
+  version: "1.0.0",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.MATURE,

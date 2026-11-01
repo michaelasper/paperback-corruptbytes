@@ -1,6 +1,6 @@
 import type { Cookie } from "@paperback/types";
-import { load } from "cheerio";
 
+import { load } from "../shared/html-parser.js";
 import {
   assertResponseBodyWithinLimit,
   decodeResponseBody,

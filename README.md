@@ -137,20 +137,52 @@ Paperback applies profile visibility before listing repository sources. Rinko Co
 
 Refresh the saved repository, update the installed extensions to **1.0.0**, then reopen Paperback. This release fixes a parser dependency's cold-start crash in the app's JavaScript runtime. Library and chapter IDs are unchanged; do not delete your library to update. If an extension still shows **UNLOADED**, report its version, Paperback version, and extension error/log output. An unloaded label alone does not identify its cause.
 
-## Shiba theme
+## Paperback themes
 
-[Download shiba.pbcolors](https://michaelasper.github.io/paperback-corruptbytes/shiba.pbcolors) for warm white reading areas, orange controls, and a separate dark palette.
+[Download shiba.pbcolors](https://michaelasper.github.io/paperback-corruptbytes/shiba.pbcolors) for warm white reading areas, orange controls, and a separate dark palette. Shiba is unchanged.
 
-To preview or edit the file, open the [Paperback theme editor](https://theme.pirate.vodka), select **Import**, and choose `shiba.pbcolors`. Select **Show preview** and inspect **Light** and **Dark**. Before editing one mode, turn off **Modes linked**. Import enables linking again. Select **Export** and keep the name `shiba` to download `shiba.pbcolors`.
+[Download dr-pepper.pbcolors](https://michaelasper.github.io/paperback-corruptbytes/dr-pepper.pbcolors) for pink controls on wine-gray dark backgrounds and a cream light palette with burgundy controls. The published link becomes available after the release containing this theme deploys. Before that, use `themes/dr-pepper.pbcolors` from this checkout.
+
+To preview or edit either file, open the [Paperback theme editor](https://theme.pirate.vodka), select **Import**, and choose the `.pbcolors` file. Select **Show preview** and inspect **Light** and **Dark**. Before editing one mode, turn off **Modes linked**. Import enables linking again. Select **Export** and keep the name `shiba` or `dr-pepper` to download the matching file.
 
 The editor preview is not a native Paperback test. It dims completed chapters and leaves five role mappings unresolved. Native materials can also differ. Do not infer blanket accessibility compliance from the preview or the numeric contrast checks.
 
-Maintainers edit `themes/shiba.pbcolors` directly. `npm run bundle` validates its closed 20-role schema and supported contrast pairs, copies its bytes, and verifies the packaged file. After deployment, run the published-byte check against the release checkout:
+### Dr Pepper palette
+
+The palette comes from [michaelasper/theme at dac3df1](https://github.com/michaelasper/theme/tree/dac3df18db588f704a13d9fea94eeec472a1d201), specifically its Pi and Herdr Dr Pepper themes. The source provides only a dark appearance. The light mode below is a Paperback adaptation. Herdr's `foreground` means terminal text; Paperback's `foreground` is a fill.
+
+[Celarye/Paperback-themes at 6283ee0](https://github.com/Celarye/Paperback-themes/tree/6283ee041318cadad07f7c520e7a16ab2f30b589) is the paired-mode RGBA format reference. RGB channels are hex bytes divided by 255. Its older role names and optional metadata are not this repository's closed 20-role schema.
+
+| Paperback role         | Light hex            | Dark hex             |
+| ---------------------- | -------------------- | -------------------- |
+| background             | `#faf3ea`            | `#352f32`            |
+| foreground             | `#fff8f0`            | `#3c3539`            |
+| tertiary               | `#eee3e1`            | `#40353c`            |
+| text                   | `#352f32`            | `#faf3ea`            |
+| textSecondary          | `#59434b`            | `#c3b7bd`            |
+| textTertiary           | `#674e58`            | `#ae9da5`            |
+| accent, primary, alert | `#704555`            | `#efabbc`            |
+| primaryText, alertText | `#faf3ea`            | `#352f32`            |
+| secondary              | `#ead8dc`            | `#514047`            |
+| secondaryText          | `#704555`            | `#faf3ea`            |
+| tertiaryText           | `#59434b`            | `#faf3ea`            |
+| border                 | `#89727c`            | `#a08791`            |
+| separator              | `#d3bfc6`            | `#84737b`            |
+| success                | `#d9e9df`            | `#315348`            |
+| error                  | `#f3d7dc`            | `#704555`            |
+| warning                | `#e8c99c`            | `#e8c99c`            |
+| overlay                | `#352f32`, alpha 0.3 | `#2d272a`, alpha 0.5 |
+
+All other roles are opaque. Dark backgrounds, text tiers, pink controls, border, separator, secondary fill, warning, and overlay hue retain source hex values. The source uses `#a4d2c2` and `#ff98a3` as terminal success/error text. Paperback uses status fills, so dark success becomes `#315348` and dark error reuses the source selection `#704555` for readable cream text. Light mode reuses the source cream, dark text, selection burgundy, and warning. It adapts the text tiers, tertiary and secondary fills, border, separator, and status fills shown above. Overlay opacity is a Paperback adaptation.
+
+### Maintain the theme files
+
+Edit `themes/shiba.pbcolors` or `themes/dr-pepper.pbcolors` directly. `npm run bundle` validates both files before writing either theme, checks supported contrast pairs, copies their bytes, and verifies both packaged files. Themes do not change extension IDs or versions. After deployment, run the batch published-byte check against the release checkout:
 
 ```bash
 PUBLISHED_REPOSITORY_URL=https://michaelasper.github.io/paperback-corruptbytes/ \
 PUBLISHED_RELEASE_KEY="$(git rev-parse HEAD)" \
-  node scripts/shiba-theme.mjs verify-published
+  node scripts/themes.mjs verify-published
 ```
 
 ## Account-backed chapters

@@ -35,7 +35,7 @@ printf '%s\n' "$result" > "$VERIFY_EVIDENCE/published-sources.exit"
 
 ## Gotchas
 
-- `serve` rebuilds bundles through the toolchain, not the repository's Shiba packaging command. Do not treat it as theme packaging proof. Run `npm run bundle` after stopping it when theme artifacts are needed.
+- `serve` rebuilds bundles through the toolchain, not the repository's theme packaging command. Do not treat it as theme packaging proof. Run `npm run bundle` after stopping it when theme artifacts are needed.
 - The server listens on network interfaces, not only loopback. Use a trusted network. Do not expose it to the Internet.
 - The server's interactive input loop is not safe to launch with closed stdin. Use an owned PTY; otherwise skip local serving and use one-shot artifact checks.
 - Local server URLs must not carry release query parameters. The toolchain treats the query as part of the file path.

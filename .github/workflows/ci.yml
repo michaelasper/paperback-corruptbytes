@@ -107,8 +107,8 @@ jobs:
           PUBLISHED_REPOSITORY_URL: ${{ steps.deployment.outputs.page_url }}
           PUBLISHED_RELEASE_KEY: ${{ github.sha }}
         run: node scripts/verify-published-repository.mjs
-      - name: Verify published Shiba theme
+      - name: Verify published themes
         env:
           PUBLISHED_REPOSITORY_URL: ${{ steps.deployment.outputs.page_url }}
           PUBLISHED_RELEASE_KEY: ${{ github.sha }}
-        run: node scripts/shiba-theme.mjs verify-published
+        run: node scripts/themes.mjs verify-published

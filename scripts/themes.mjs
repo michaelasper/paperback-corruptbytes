@@ -10,7 +10,7 @@ import {
   readSafeFile,
 } from "./safe-files.mjs";
 
-export const SHIBA_FILENAME = "shiba.pbcolors";
+export const THEME_FILENAMES = Object.freeze(["shiba.pbcolors", "dr-pepper.pbcolors"]);
 const MAX_BYTES = 32 * 1024;
 const ROLES = [
   "border",
@@ -113,7 +113,7 @@ function parseTheme(text, label) {
   } catch {
     throw new Error(`${label} must contain valid UTF-8 JSON.`);
   }
-  exactKeys(theme, ROLES, `${label} ShibaTheme20`);
+  exactKeys(theme, ROLES, `${label} PaperbackTheme20`);
   for (const role of ROLES) {
     exactKeys(theme[role], MODES, role);
     for (const mode of MODES) {
@@ -134,15 +134,33 @@ function parseTheme(text, label) {
   return theme;
 }
 
-async function sourceTheme(root) {
+async function sourceTheme(root, filename) {
   const directory = await pinSafeDirectory(join(root, "themes"), "themes");
-  const text = await readSafeFile(join(directory.path, SHIBA_FILENAME), {
+  const text = await readSafeFile(join(directory.path, filename), {
     rootPath: directory,
     maxBytes: MAX_BYTES,
-    label: `themes/${SHIBA_FILENAME}`,
+    label: `themes/${filename}`,
   });
-  parseTheme(text, `themes/${SHIBA_FILENAME}`);
+  parseTheme(text, `themes/${filename}`);
   return text;
+}
+
+async function sourceThemes(root) {
+  return Promise.all(
+    THEME_FILENAMES.map(async (filename) => [filename, await sourceTheme(root, filename)]),
+  );
+}
+
+export async function packageThemes(root = process.cwd()) {
+  const sources = await sourceThemes(root);
+  const directory = await pinSafeDirectory(join(root, "bundles"), "bundles");
+  for (const [filename, text] of sources) await packageTheme(directory, filename, text);
+}
+
+export async function verifyPackagedThemes(root = process.cwd()) {
+  const sources = await sourceThemes(root);
+  const directory = await pinSafeDirectory(join(root, "bundles"), "bundles");
+  for (const [filename, text] of sources) await verifyPackagedTheme(directory, filename, text);
 }
 
 async function assertDestination(path, directory) {
@@ -155,12 +173,10 @@ async function assertDestination(path, directory) {
   await assertSafeRegularFile(path, { rootPath: directory });
 }
 
-export async function packageShibaTheme(root = process.cwd()) {
-  const text = await sourceTheme(root);
-  const directory = await pinSafeDirectory(join(root, "bundles"), "bundles");
-  const destination = join(directory.path, SHIBA_FILENAME);
+async function packageTheme(directory, filename, text) {
+  const destination = join(directory.path, filename);
   await assertDestination(destination, directory);
-  const temporary = join(directory.path, `.shiba-${randomUUID()}.tmp`);
+  const temporary = join(directory.path, `.${filename}-${randomUUID()}.tmp`);
   await assertPinnedDirectory(directory);
   const handle = await open(temporary, "wx", 0o644);
   try {
@@ -178,19 +194,16 @@ export async function packageShibaTheme(root = process.cwd()) {
   }
 }
 
-export async function verifyPackagedShibaTheme(root = process.cwd()) {
-  const expected = await sourceTheme(root);
-  const directory = await pinSafeDirectory(join(root, "bundles"), "bundles");
-  const actual = await readSafeFile(join(directory.path, SHIBA_FILENAME), {
+async function verifyPackagedTheme(directory, filename, expected) {
+  const actual = await readSafeFile(join(directory.path, filename), {
     rootPath: directory,
     maxBytes: MAX_BYTES,
-    label: `bundles/${SHIBA_FILENAME}`,
+    label: `bundles/${filename}`,
   });
-  if (actual !== expected)
-    throw new Error(`bundles/${SHIBA_FILENAME} differs from the source bytes.`);
+  if (actual !== expected) throw new Error(`bundles/${filename} differs from the source bytes.`);
 }
 
-export async function verifyPublishedShibaTheme({
+export async function verifyPublishedThemes({
   root = process.cwd(),
   baseUrl,
   cacheKey,
@@ -205,9 +218,16 @@ export async function verifyPublishedShibaTheme({
     throw new Error("A non-empty published release cache key is required.");
   }
   base.pathname = `${base.pathname.replace(/\/+$/, "")}/`;
-  const url = new URL(SHIBA_FILENAME, base);
-  url.searchParams.set("release", cacheKey);
-  const expected = Buffer.from(await sourceTheme(root), "utf8");
+  const sources = await sourceThemes(root);
+  for (const [filename, text] of sources) {
+    const url = new URL(filename, base);
+    url.searchParams.set("release", cacheKey);
+    await verifyPublishedTheme(url, filename, text, fetchImpl, timeoutMs);
+  }
+}
+
+async function verifyPublishedTheme(url, filename, text, fetchImpl, timeoutMs) {
+  const expected = Buffer.from(text, "utf8");
   const response = await fetchImpl(url.toString(), {
     cache: "no-store",
     headers: { "cache-control": "no-cache" },
@@ -216,13 +236,13 @@ export async function verifyPublishedShibaTheme({
   });
   if (!response.ok || response.redirected) {
     await response.body?.cancel();
-    throw new Error(`${SHIBA_FILENAME} returned HTTP ${response.status} or a redirect.`);
+    throw new Error(`${filename} returned HTTP ${response.status} or a redirect.`);
   }
   if (Number(response.headers.get("content-length")) > MAX_BYTES) {
     await response.body?.cancel();
-    throw new Error(`${SHIBA_FILENAME} exceeds maximum size of ${MAX_BYTES} bytes.`);
+    throw new Error(`${filename} exceeds maximum size of ${MAX_BYTES} bytes.`);
   }
-  if (!response.body) throw new Error(`${SHIBA_FILENAME} has no response body.`);
+  if (!response.body) throw new Error(`${filename} has no response body.`);
   const reader = response.body.getReader();
   const chunks = [];
   let total = 0;
@@ -232,7 +252,7 @@ export async function verifyPublishedShibaTheme({
       if (done) break;
       total += value.byteLength;
       if (total > MAX_BYTES)
-        throw new Error(`${SHIBA_FILENAME} exceeds maximum size of ${MAX_BYTES} bytes.`);
+        throw new Error(`${filename} exceeds maximum size of ${MAX_BYTES} bytes.`);
       chunks.push(value);
     }
   } finally {
@@ -240,28 +260,27 @@ export async function verifyPublishedShibaTheme({
     reader.releaseLock();
   }
   const actual = Buffer.concat(chunks, total);
-  parseTheme(actual.toString("utf8"), `Published ${SHIBA_FILENAME}`);
+  parseTheme(actual.toString("utf8"), `Published ${filename}`);
   if (!actual.equals(expected))
-    throw new Error(`Published ${SHIBA_FILENAME} differs from the source bytes.`);
+    throw new Error(`Published ${filename} differs from the source bytes.`);
 }
 
 const isMain = process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
 if (isMain) {
   try {
     const command = process.argv[2];
-    if (process.argv.length !== 3)
-      throw new Error("Usage: shiba-theme.mjs package|verify-published");
+    if (process.argv.length !== 3) throw new Error("Usage: themes.mjs package|verify-published");
     if (command === "package") {
-      await packageShibaTheme();
-      console.log(`Packaged ${SHIBA_FILENAME}.`);
+      await packageThemes();
+      console.log(`Packaged ${THEME_FILENAMES.join(", ")}.`);
     } else if (command === "verify-published") {
-      await verifyPublishedShibaTheme({
+      await verifyPublishedThemes({
         baseUrl: process.env.PUBLISHED_REPOSITORY_URL,
         cacheKey: process.env.PUBLISHED_RELEASE_KEY,
       });
-      console.log(`Verified published ${SHIBA_FILENAME}.`);
+      console.log(`Verified published ${THEME_FILENAMES.join(", ")}.`);
     } else {
-      throw new Error("Usage: shiba-theme.mjs package|verify-published");
+      throw new Error("Usage: themes.mjs package|verify-published");
     }
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);

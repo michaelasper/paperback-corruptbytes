@@ -14,7 +14,7 @@ Run Launch and Doctor in [the skill](../SKILL.md). Preserve the same `VERIFY_ROO
 | [Discovery and search](discovery-search.md) | Home rails, title search, genre, sorting, pasted URL                  | Named source live contracts                                           | Each app entry point and resulting cards              |
 | [Chapters and readers](chapters.md)         | Details, existing library, alternate translations, comic/novel reader | Raw-to-client chapter integrity, page/paragraph order, image requests | Persisted progress, native decode/render and refresh  |
 | [Account access](account-access.md)         | Source settings, sign-in, challenge, locked chapter, logout           | Anonymous/locked live checks and offline boundary tests               | Embedded-browser handoff and authorized account state |
-| [Shiba theme](theme.md)                     | Direct download, editor import/export, light/dark, app import         | Schema/contrast/byte checks and browser actions                       | Paperback import and artwork-backed materials         |
+| [Paperback themes](theme.md)                | Direct download, editor import/export, light/dark, app import         | Schema/contrast/byte checks and browser actions                       | Paperback import and artwork-backed materials         |
 
 ## Proof standards
 

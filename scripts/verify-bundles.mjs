@@ -9,7 +9,7 @@ import {
   pinSafeDirectory,
   readSafeFile,
 } from "./safe-files.mjs";
-import { SHIBA_FILENAME, verifyPackagedShibaTheme } from "./shiba-theme.mjs";
+import { THEME_FILENAMES, verifyPackagedThemes } from "./themes.mjs";
 import {
   compareSourceIds,
   extractExtensionInfo,
@@ -80,7 +80,7 @@ async function bundleDirectories(bundleRoot, rootContext) {
     if (
       entry.name !== "index.html" &&
       entry.name !== "versioning.json" &&
-      entry.name !== SHIBA_FILENAME
+      !THEME_FILENAMES.includes(entry.name)
     ) {
       throw new Error(`bundles/${entry.name} is not a recognized bundle artifact.`);
     }
@@ -204,7 +204,7 @@ export async function verifyBundles(root = process.cwd()) {
     await assertIconFile(staticRoot, iconPath, id, bundleRootContext);
   }
 
-  await verifyPackagedShibaTheme(root);
+  await verifyPackagedThemes(root);
   await assertPinnedDirectory(bundleRootContext);
   return { sourceIds };
 }

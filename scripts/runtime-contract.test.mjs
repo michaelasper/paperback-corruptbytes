@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { build } from "rolldown";
 
 import { createDeterministicRandom, deriveDeterministicSeed } from "./random-runtime.ts";
+import { verifyAtsumaruAssociations } from "./verify-atsumaru-associations.mjs";
 import { verifyRuntime } from "./verify-runtime.mjs";
 
 const sourceRoot = new URL("../src/", import.meta.url);
@@ -47,6 +48,16 @@ void test("every bundled source cold-starts with randomized persisted state and 
       );
     });
   }
+});
+
+void test("the freshly compiled Atsumaru export preserves app associations and recovered reader routing", async () => {
+  const result = await build({
+    input: new URL("Atsumaru/main.ts", sourceRoot).pathname,
+    transform: { target: "es2020" },
+    output: { format: "iife", name: "source", minify: true },
+    write: false,
+  });
+  await verifyAtsumaruAssociations(result.output[0].code);
 });
 
 void test("production HTML imports cannot bypass the runtime bootstrap", async () => {

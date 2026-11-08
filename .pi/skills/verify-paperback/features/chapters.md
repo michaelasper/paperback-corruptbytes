@@ -20,7 +20,8 @@ Open a series from source search or an existing library entry. Refresh the chapt
 Preconditions: Launch and Doctor passed. Use anonymous public fixtures, not the user's private library. The baseline Drive block in the skill captures this exact run and its exit code.
 
 - Atsumaru complete path. Run `npm run test:live:atsumaru > "$VERIFY_EVIDENCE/drive.log" 2>&1`, then immediately record `$?` in `drive.exit`. Require the test `retains raw chapter IDs, order and reader content across four bounded series` to execute and pass. Its diagnostic rows cover IDs `68Fv`, `N7JpR`, `oJQ4o`, and `-aOD`. Each raw/retained count must match. The test compares IDs, chapter numbers, dense indices, since-date retention, and alternate collapse, then early/middle/latest reader contents and first/last image responses.
-- Legacy identity. In the same run, require `resolves a legacy library ID to the affected title's complete current chapter range` and `preserves library IDs, detail posters, and chapter variants`. These exercise client identity behavior, not real persisted app storage.
+- Legacy identity. In the same run, require `resolves a legacy library ID to the affected title's complete current chapter range` and `preserves library IDs, detail posters, and chapter variants`. These also require exact caller association and unchanged input metadata. They exercise client identity behavior, not real persisted app storage.
+- Generated association contract. Run `node --import tsx --test scripts/runtime-contract.test.mjs` for a freshly compiled Atsumaru export. Run `npm run bundle` and `npm run verify:bundles` to check the generated artifact. Require exact caller association, unchanged metadata, scanlator labels, both alternate settings, future-date backfills, and canonical reader recovery. This uses synthetic fixtures and real exported methods, not the native bridge.
 - Alternate selection. Run `./node_modules/.bin/tsx --test src/Atsumaru/client.test.ts src/Atsumaru/parsers.test.ts > "$VERIFY_EVIDENCE/alternates-offline.log" 2>&1`. Require exact winner IDs for timestamp ties, zero/fractional chapter numbers, and backfills. Label this offline evidence.
 - Paginated histories. Run `npm run test:live:qimanga` and `npm run test:live:rinko`, saving separate logs and exit codes. Require the complete multi-page history and fresh-nonce pagination cases. Do not infer completeness from a nonempty first page.
 - Novel rendering contract. Atsumaru's live run checks escaped XHTML. `npm run test:live:valir` adds a public novel and distinct public/internal slug coverage. Successful sanitized HTML is not a native layout test.
@@ -28,6 +29,7 @@ Preconditions: Launch and Doctor passed. Use anonymous public fixtures, not the 
 
 ## Gotchas
 
+- Native installation, chapter persistence, and display after the association fix are NOT RUN without an available Paperback device. The Vortex native display discrepancy is separate and unresolved. Preserving metadata may increase bridge payload size; its native cost is unmeasured.
 - Atsumaru `totalChapterCount` is not the count of every translation record. Compare raw unique IDs with client IDs; do not compare variant count with the page's total.
 - Keep zero, fractional, alternate, and backfilled chapters. Do not deduplicate by chapter number in the default alternate-enabled path.
 - Image MIME and completed byte downloads do not prove visual decoding or image quality in iOS. The current live probe samples first/last images and caps each at 2 MiB.

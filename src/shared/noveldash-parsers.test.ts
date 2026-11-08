@@ -21,6 +21,7 @@ import {
   seriesPageHtml,
   sourceMangaFixture,
   taxonomyHtml,
+  textRecordChunks,
 } from "./noveldash-test-fixtures.js";
 
 describe("NovelDash catalog parsing", () => {
@@ -300,6 +301,45 @@ describe("NovelDash reader envelope selection", () => {
     langCode: "en",
     chapNum: 1,
   };
+
+  it("renders legacy prose containing an incomplete modern reader prefix", () => {
+    const content =
+      '<p>The example begins with {"kind":"novel","chapter":{ before the next field.</p>';
+    const details = parseNovelDashChapterDetails(
+      novelReaderHtml(content),
+      chapter,
+      NOVELDASH_TEST_SITE,
+    );
+
+    assert.equal(details.type, "html");
+    if (details.type !== "html") assert.fail("Expected novel details");
+    assert.ok(details.html.includes(content));
+  });
+
+  for (const kind of ["novel", "comic"]) {
+    it(`ignores a permissive ${kind} reader inside text before a denied modern reader`, () => {
+      const decoy = JSON.stringify({
+        kind,
+        chapter: { id: chapter.chapterId, content: "<p>Text-record decoy.</p>" },
+        isUnlocked: true,
+      });
+      const html = flightHtml([
+        ...textRecordChunks("68", `<p>${decoy}</p>`),
+        `1c:${JSON.stringify({
+          kind,
+          chapter: { id: chapter.chapterId, content: "$68" },
+          isUnlocked: false,
+          isLocked: true,
+          coinPrice: 50,
+        })}\n`,
+      ]);
+
+      assert.throws(
+        () => parseNovelDashChapterDetails(html, chapter, NOVELDASH_TEST_SITE),
+        /locked.*50 coins.*sign in/i,
+      );
+    });
+  }
 
   it("rejects TTS metadata without a reader envelope", () => {
     const html = flightHtml([JSON.stringify({ tts: true, chapter: { id: chapter.chapterId } })]);

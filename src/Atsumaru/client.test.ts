@@ -73,6 +73,41 @@ const setDetailResponses = (
 };
 
 describe("Atsumaru client cache and identity boundaries", () => {
+  it("preserves the restored app-owned chapter association without changing metadata", async () => {
+    const transport = new FakeTransport();
+    transport.bodies.set(buildAllChaptersUrl("fixture-manga"), CHAPTERS_RESPONSE);
+    const restored: SourceManga = JSON.parse(
+      JSON.stringify({
+        ...manga("fixture-library"),
+        mangaInfo: {
+          ...manga("fixture-library").mangaInfo,
+          additionalInfo: {
+            [CANONICAL_MANGA_ID_KEY]: "fixture-manga",
+            atsumaruScanlators: JSON.stringify({
+              scanlators: [{ id: "scan-manga-oJQ4o", name: "Fixture team" }],
+            }),
+            format: "comic",
+          },
+        },
+      }),
+    );
+    const before = structuredClone(restored);
+    const info = restored.mangaInfo;
+    const metadata = info.additionalInfo;
+
+    const chapters = await new AtsumaruClient(transport).getChapters(restored);
+
+    assert.ok(chapters.length > 0);
+    for (const chapter of chapters) {
+      assert.equal(chapter.sourceManga, restored);
+      assert.equal(chapter.sourceManga.mangaInfo, info);
+      assert.equal(chapter.sourceManga.mangaInfo.additionalInfo, metadata);
+      assert.equal(chapter.sourceManga.mangaId, "fixture-library");
+      assert.equal(chapter.additionalInfo?.[CANONICAL_MANGA_ID_KEY], "fixture-manga");
+    }
+    assert.deepEqual(restored, before);
+  });
+
   it("coalesces detail requests, caches raw JSON, and returns fresh mapped objects", async () => {
     const transport = new FakeTransport();
     setDetailResponses(transport);

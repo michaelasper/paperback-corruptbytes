@@ -14,12 +14,10 @@ import {
   COMIC_MANGA_ID,
   NOVEL_MANGA_ID,
   NOVELDASH_TEST_SITE,
-  comicReaderHtml,
-  dormantProtectionComicReaderHtml,
-  lockedReaderHtml,
+  comicReaderFixture,
+  lockedReaderFixture,
+  flightHtml,
   novelReaderHtml,
-  purchasedComicReaderHtml,
-  protectedComicReaderHtml,
   seriesPageHtml,
   sourceMangaFixture,
   taxonomyHtml,
@@ -167,104 +165,167 @@ describe("NovelDash series parsing", () => {
   });
 });
 
-describe("NovelDash reader parsing", () => {
-  it("orders validated comic pages", () => {
-    const chapter = parseNovelDashSeriesPage(seriesPageHtml(), NOVELDASH_TEST_SITE, COMIC_MANGA_ID)
-      .chapters[0]!;
-    const details = parseNovelDashChapterDetails(comicReaderHtml, chapter, NOVELDASH_TEST_SITE);
-    assert.deepEqual(details, {
-      id: "chapter-1",
-      mangaId: COMIC_MANGA_ID,
-      pages: [
-        "https://media.fixture.example/series/route-slug/0001/page-1.webp",
-        "https://media.fixture.example/series/route-slug/0001/page-2.webp",
-      ],
+for (const kindPrefixed of [false, true]) {
+  describe(`NovelDash ${kindPrefixed ? "kind-prefixed" : "legacy"} reader parsing`, () => {
+    const comicReaderHtml = comicReaderFixture("none", false, kindPrefixed);
+    const dormantProtectionComicReaderHtml = comicReaderFixture("dormant", false, kindPrefixed);
+    const purchasedComicReaderHtml = comicReaderFixture("none", true, kindPrefixed);
+    const protectedComicReaderHtml = comicReaderFixture("active", false, kindPrefixed);
+    const lockedReaderHtml = lockedReaderFixture(kindPrefixed);
+
+    it("orders validated comic pages", () => {
+      const chapter = parseNovelDashSeriesPage(
+        seriesPageHtml(),
+        NOVELDASH_TEST_SITE,
+        COMIC_MANGA_ID,
+      ).chapters[0]!;
+      const details = parseNovelDashChapterDetails(comicReaderHtml, chapter, NOVELDASH_TEST_SITE);
+      assert.deepEqual(details, {
+        id: "chapter-1",
+        mangaId: COMIC_MANGA_ID,
+        pages: [
+          "https://media.fixture.example/series/route-slug/0001/page-1.webp",
+          "https://media.fixture.example/series/route-slug/0001/page-2.webp",
+        ],
+      });
+    });
+
+    it("returns sanitized XHTML for novel text references", () => {
+      const chapter = {
+        chapterId: "novel-chapter-1",
+        sourceManga: sourceMangaFixture("novel"),
+        langCode: "en",
+        chapNum: 1,
+        additionalInfo: { upstreamId: "novel-chapter-1", number: "1" },
+      };
+      const details = parseNovelDashChapterDetails(
+        novelReaderHtml(
+          '<div onclick="steal()"><p>Hello <strong>reader</strong>.</p><script>bad()</script><iframe src="https://evil.example"></iframe></div>',
+          kindPrefixed,
+        ),
+        chapter,
+        NOVELDASH_TEST_SITE,
+      );
+      assert.equal(details.id, chapter.chapterId);
+      assert.equal(details.mangaId, NOVEL_MANGA_ID);
+      assert.equal(details.type, "html");
+      if (details.type !== "html") assert.fail("Expected novel details");
+      assert.match(details.html, /Hello <strong>reader<\/strong>\./);
+      assert.doesNotMatch(details.html, /script|iframe|onclick/i);
+    });
+
+    it("rejects inaccessible paid chapters even when their payload contains image URLs", () => {
+      const chapter = parseNovelDashSeriesPage(
+        seriesPageHtml(),
+        NOVELDASH_TEST_SITE,
+        COMIC_MANGA_ID,
+      ).chapters[1]!;
+      assert.throws(
+        () => parseNovelDashChapterDetails(lockedReaderHtml, chapter, NOVELDASH_TEST_SITE),
+        /locked.*50 coins.*sign in/i,
+      );
+    });
+
+    it("rejects a reader response for a different chapter identity", () => {
+      const chapter = parseNovelDashSeriesPage(
+        seriesPageHtml(),
+        NOVELDASH_TEST_SITE,
+        COMIC_MANGA_ID,
+      ).chapters[0]!;
+      assert.throws(
+        () => parseNovelDashChapterDetails(lockedReaderHtml, chapter, NOVELDASH_TEST_SITE),
+        /different chapter/i,
+      );
+    });
+
+    it("rejects protected page layouts instead of returning scrambled images", () => {
+      const chapter = parseNovelDashSeriesPage(
+        seriesPageHtml(),
+        NOVELDASH_TEST_SITE,
+        COMIC_MANGA_ID,
+      ).chapters[0]!;
+      assert.throws(
+        () => parseNovelDashChapterDetails(protectedComicReaderHtml, chapter, NOVELDASH_TEST_SITE),
+        /protected page layout/i,
+      );
+    });
+
+    it("uses complete direct images when dormant protection metadata is present", () => {
+      const chapter = parseNovelDashSeriesPage(
+        seriesPageHtml(),
+        NOVELDASH_TEST_SITE,
+        COMIC_MANGA_ID,
+      ).chapters[0]!;
+      const details = parseNovelDashChapterDetails(
+        dormantProtectionComicReaderHtml,
+        chapter,
+        NOVELDASH_TEST_SITE,
+      );
+
+      assert.ok("pages" in details);
+      if ("pages" in details) assert.equal(details.pages.length, 2);
+    });
+
+    it("lets an explicit account unlock override paid chapter metadata", () => {
+      const sourceChapter = parseNovelDashSeriesPage(
+        seriesPageHtml(),
+        NOVELDASH_TEST_SITE,
+        COMIC_MANGA_ID,
+      ).chapters[0]!;
+      const chapter = {
+        ...sourceChapter,
+        additionalInfo: {
+          ...sourceChapter.additionalInfo,
+          isLocked: "true",
+          isAccessible: "true",
+          coinPrice: "50",
+        },
+      };
+      const details = parseNovelDashChapterDetails(
+        purchasedComicReaderHtml,
+        chapter,
+        NOVELDASH_TEST_SITE,
+      );
+
+      assert.ok("pages" in details);
+      if ("pages" in details) assert.equal(details.pages.length, 2);
     });
   });
+}
 
-  it("returns sanitized XHTML for novel text references", () => {
-    const chapter = {
-      chapterId: "novel-chapter-1",
-      sourceManga: sourceMangaFixture("novel"),
-      langCode: "en",
-      chapNum: 1,
-      additionalInfo: { upstreamId: "novel-chapter-1", number: "1" },
-    };
-    const details = parseNovelDashChapterDetails(
-      novelReaderHtml(
-        '<div onclick="steal()"><p>Hello <strong>reader</strong>.</p><script>bad()</script><iframe src="https://evil.example"></iframe></div>',
-      ),
-      chapter,
-      NOVELDASH_TEST_SITE,
+describe("NovelDash reader envelope selection", () => {
+  const chapter = {
+    chapterId: "novel-chapter-1",
+    sourceManga: sourceMangaFixture("novel"),
+    langCode: "en",
+    chapNum: 1,
+  };
+
+  it("rejects TTS metadata without a reader envelope", () => {
+    const html = flightHtml([JSON.stringify({ tts: true, chapter: { id: chapter.chapterId } })]);
+    assert.throws(
+      () => parseNovelDashChapterDetails(html, chapter, NOVELDASH_TEST_SITE),
+      /expected structured data/i,
     );
-    assert.equal(details.type, "html");
-    if (details.type !== "html") assert.fail("Expected novel details");
-    assert.match(details.html, /Hello <strong>reader<\/strong>\./);
-    assert.doesNotMatch(details.html, /script|iframe|onclick/i);
   });
 
-  it("rejects inaccessible paid chapters even when their payload contains image URLs", () => {
-    const chapter = parseNovelDashSeriesPage(seriesPageHtml(), NOVELDASH_TEST_SITE, COMIC_MANGA_ID)
-      .chapters[1]!;
+  it("honors modern denial instead of a preceding permissive legacy reader", () => {
+    const html = flightHtml([
+      JSON.stringify({
+        chapter: { id: chapter.chapterId, content: "<p>Legacy decoy.</p>" },
+        isUnlocked: true,
+      }),
+      JSON.stringify({
+        kind: "novel",
+        chapter: { id: chapter.chapterId, content: "<p>Denied text.</p>" },
+        isUnlocked: false,
+        isLocked: true,
+        coinPrice: 50,
+      }),
+    ]);
     assert.throws(
-      () => parseNovelDashChapterDetails(lockedReaderHtml, chapter, NOVELDASH_TEST_SITE),
+      () => parseNovelDashChapterDetails(html, chapter, NOVELDASH_TEST_SITE),
       /locked.*50 coins.*sign in/i,
     );
-  });
-
-  it("rejects a reader response for a different chapter identity", () => {
-    const chapter = parseNovelDashSeriesPage(seriesPageHtml(), NOVELDASH_TEST_SITE, COMIC_MANGA_ID)
-      .chapters[0]!;
-    assert.throws(
-      () => parseNovelDashChapterDetails(lockedReaderHtml, chapter, NOVELDASH_TEST_SITE),
-      /different chapter/i,
-    );
-  });
-
-  it("rejects protected page layouts instead of returning scrambled images", () => {
-    const chapter = parseNovelDashSeriesPage(seriesPageHtml(), NOVELDASH_TEST_SITE, COMIC_MANGA_ID)
-      .chapters[0]!;
-    assert.throws(
-      () => parseNovelDashChapterDetails(protectedComicReaderHtml, chapter, NOVELDASH_TEST_SITE),
-      /protected page layout/i,
-    );
-  });
-
-  it("uses complete direct images when dormant protection metadata is present", () => {
-    const chapter = parseNovelDashSeriesPage(seriesPageHtml(), NOVELDASH_TEST_SITE, COMIC_MANGA_ID)
-      .chapters[0]!;
-    const details = parseNovelDashChapterDetails(
-      dormantProtectionComicReaderHtml,
-      chapter,
-      NOVELDASH_TEST_SITE,
-    );
-
-    assert.ok("pages" in details);
-    if ("pages" in details) assert.equal(details.pages.length, 2);
-  });
-
-  it("lets an explicit account unlock override paid chapter metadata", () => {
-    const sourceChapter = parseNovelDashSeriesPage(
-      seriesPageHtml(),
-      NOVELDASH_TEST_SITE,
-      COMIC_MANGA_ID,
-    ).chapters[0]!;
-    const chapter = {
-      ...sourceChapter,
-      additionalInfo: {
-        ...sourceChapter.additionalInfo,
-        isLocked: "true",
-        isAccessible: "true",
-        coinPrice: "50",
-      },
-    };
-    const details = parseNovelDashChapterDetails(
-      purchasedComicReaderHtml,
-      chapter,
-      NOVELDASH_TEST_SITE,
-    );
-
-    assert.ok("pages" in details);
-    if ("pages" in details) assert.equal(details.pages.length, 2);
   });
 });

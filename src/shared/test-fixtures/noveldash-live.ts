@@ -24,6 +24,7 @@ export interface NovelDashLiveSeries {
   minimumChapters?: number;
   internalSlug?: string;
   readableAfterChapter?: number;
+  chapterNumber?: number;
 }
 
 export interface NovelDashLiveMetadata extends NovelDashLiveSeries {
@@ -236,8 +237,15 @@ export const assertNovelDashReaderContract = async (
 ): Promise<void> => {
   const { chapters, client } = await loadSeries(site, series);
   const readable = chapters
-    .filter((chapter) => chapter.additionalInfo?.isAccessible === "true")
+    .filter(
+      (chapter) =>
+        chapter.additionalInfo?.isAccessible === "true" &&
+        (series.chapterNumber === undefined || chapter.chapNum === series.chapterNumber),
+    )
     .at(-1);
-  assert.ok(readable, `${series.title} did not expose a readable chapter.`);
+  assert.ok(
+    readable,
+    `${series.title} did not expose a readable chapter${series.chapterNumber === undefined ? "" : ` ${series.chapterNumber}`}.`,
+  );
   await validateReader(site, series.kind, readable, await client.getChapterDetails(readable));
 };

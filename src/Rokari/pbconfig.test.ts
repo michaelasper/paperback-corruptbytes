@@ -8,7 +8,7 @@ import config from "./pbconfig.js";
 describe("Rokari Comics extension metadata", () => {
   it("exposes valid Paperback source metadata with a versioned alpha release", () => {
     assert.equal(config.name, "Rokari Comics");
-    assert.equal(config.version, "1.0.0");
+    assert.equal(config.version, "1.0.1");
     assert.equal(config.language, "en");
     assert.equal(config.icon, "icon.png");
     assert.equal(config.contentRating, ContentRating.ADULT);

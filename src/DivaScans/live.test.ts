@@ -41,6 +41,15 @@ describe("Diva Scans live public contract", { skip: !live }, () => {
     });
   });
 
+  it("renders chapter 30 of I Married the Dragon I Killed [Novel] as sanitized HTML", async () => {
+    await assertNovelDashReaderContract(DIVA_SCANS_SITE, {
+      kind: "novel",
+      slug: "i-married-the-dragon-i-killed-novel",
+      title: "I Married the Dragon I Killed [Novel]",
+      chapterNumber: 30,
+    });
+  });
+
   it("renders an anonymously accessible novel chapter as sanitized HTML", async () => {
     await assertNovelDashReaderContract(DIVA_SCANS_SITE, {
       kind: "novel",

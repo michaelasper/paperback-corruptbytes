@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createContext, runInContext } from "node:vm";
 
+import { verifyAtsumaruAssociations } from "./verify-atsumaru-associations.mjs";
+
 // Deliberately no Buffer, atob, URL, fetch, process, require or browser globals.
 // This models a cold JS runtime, not Paperback's native UI or database bridge.
 export async function verifyRuntime(code, id, { state, atob } = {}) {
@@ -39,6 +41,7 @@ export async function verifyBundledRuntime(root = process.cwd()) {
   for (const { id } of manifest.sources) {
     const code = await readFile(resolve(root, "bundles", id, "index.js"), "utf8");
     await verifyRuntime(code, id);
+    if (id === "Atsumaru") await verifyAtsumaruAssociations(code);
   }
   return manifest.sources.length;
 }
@@ -46,7 +49,7 @@ export async function verifyBundledRuntime(root = process.cwd()) {
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try {
     console.log(
-      `Cold-started ${await verifyBundledRuntime()} Paperback source bundles without Node/browser globals.`,
+      `Cold-started ${await verifyBundledRuntime()} Paperback source bundles without Node/browser globals. Verified Atsumaru chapter associations and recovered reader routing.`,
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);

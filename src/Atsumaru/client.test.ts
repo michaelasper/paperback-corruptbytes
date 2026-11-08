@@ -73,6 +73,41 @@ const setDetailResponses = (
 };
 
 describe("Atsumaru client cache and identity boundaries", () => {
+  it("preserves the restored app-owned chapter association without changing metadata", async () => {
+    const transport = new FakeTransport();
+    transport.bodies.set(buildAllChaptersUrl("fixture-manga"), CHAPTERS_RESPONSE);
+    const restored: SourceManga = JSON.parse(
+      JSON.stringify({
+        ...manga("fixture-library"),
+        mangaInfo: {
+          ...manga("fixture-library").mangaInfo,
+          additionalInfo: {
+            [CANONICAL_MANGA_ID_KEY]: "fixture-manga",
+            atsumaruScanlators: JSON.stringify({
+              scanlators: [{ id: "scan-manga-oJQ4o", name: "Fixture team" }],
+            }),
+            format: "comic",
+          },
+        },
+      }),
+    );
+    const before = structuredClone(restored);
+    const info = restored.mangaInfo;
+    const metadata = info.additionalInfo;
+
+    const chapters = await new AtsumaruClient(transport).getChapters(restored);
+
+    assert.ok(chapters.length > 0);
+    for (const chapter of chapters) {
+      assert.equal(chapter.sourceManga, restored);
+      assert.equal(chapter.sourceManga.mangaInfo, info);
+      assert.equal(chapter.sourceManga.mangaInfo.additionalInfo, metadata);
+      assert.equal(chapter.sourceManga.mangaId, "fixture-library");
+      assert.equal(chapter.additionalInfo?.[CANONICAL_MANGA_ID_KEY], "fixture-manga");
+    }
+    assert.deepEqual(restored, before);
+  });
+
   it("coalesces detail requests, caches raw JSON, and returns fresh mapped objects", async () => {
     const transport = new FakeTransport();
     setDetailResponses(transport);
@@ -195,10 +230,16 @@ describe("Atsumaru client cache and identity boundaries", () => {
       chapters.map(({ chapterId }) => chapterId),
       ["h4j-gl", "wZieNneB", "_rmrsb"],
     );
+    assert.ok(chapters.every((chapter) => chapter.sourceManga === sourceManga));
     assert.equal(chapters[1]?.version, "Archive Team");
     assert.equal(transport.calls.filter((url) => url.includes("allChapters")).length, 1);
 
-    const oneTranslation = await client.getChapters(sourceManga, undefined, false);
+    const oneTranslation = await client.getChapters(
+      sourceManga,
+      new Date(2_000_000_000_000),
+      false,
+    );
+    assert.ok(oneTranslation.every((chapter) => chapter.sourceManga === sourceManga));
     assert.deepEqual(
       oneTranslation.map(({ chapterId }) => chapterId),
       ["h4j-gl", "_rmrsb"],
@@ -240,8 +281,8 @@ describe("Atsumaru client cache and identity boundaries", () => {
 
     const chapters = await new AtsumaruClient(chapterTransport).getChapters(persistedSourceManga);
 
-    assert.notEqual(chapters[0]?.sourceManga, persistedSourceManga);
-    assert.notEqual(chapters[0]?.sourceManga.mangaInfo, persistedSourceManga.mangaInfo);
+    assert.equal(chapters[0]?.sourceManga, persistedSourceManga);
+    assert.equal(chapters[0]?.sourceManga.mangaInfo, persistedSourceManga.mangaInfo);
     assert.deepEqual(chapters[0]?.sourceManga, persistedSourceManga);
     assert.ok(chapters.every(({ version }) => version === "Scanlation scan-manga-oJQ4o"));
     assert.deepEqual(chapterTransport.calls, [
@@ -277,7 +318,7 @@ describe("Atsumaru client cache and identity boundaries", () => {
     const currentChapter = chapters.find(({ chapterId }) => chapterId === "wZieNneB");
     assert.ok(currentChapter);
     assert.equal(chapters.length, 3);
-    assert.ok(chapters.every(({ sourceManga }) => sourceManga.mangaId === "retired-id"));
+    assert.ok(chapters.every(({ sourceManga }) => sourceManga === legacyManga));
     assert.ok(
       chapters.every(({ additionalInfo }) => additionalInfo?.[CANONICAL_MANGA_ID_KEY] === "oJQ4o"),
     );
@@ -343,7 +384,15 @@ describe("Atsumaru client cache and identity boundaries", () => {
     });
     transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
 
-    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
+    transport.bodies.set(buildChapterUrl("oJQ4o", "wZieNneB"), COMIC_CHAPTER_RESPONSE);
+    const before = structuredClone(sourceManga);
+    const client = new AtsumaruClient(transport);
+    const chapters = await client.getChapters(sourceManga);
+    assert.ok(chapters.every((chapter) => chapter.sourceManga === sourceManga));
+    assert.deepEqual(sourceManga, before);
+    const readable = chapters.find(({ chapterId }) => chapterId === "wZieNneB");
+    assert.ok(readable);
+    assert.equal((await client.getChapterDetails(readable)).mangaId, sourceManga.mangaId);
 
     assert.deepEqual(
       chapters.map(({ chapterId }) => chapterId),
@@ -356,6 +405,7 @@ describe("Atsumaru client cache and identity boundaries", () => {
       buildAllChaptersUrl("retired-id"),
       searchUrl,
       buildAllChaptersUrl("oJQ4o"),
+      buildChapterUrl("oJQ4o", "wZieNneB"),
     ]);
   });
 
@@ -593,11 +643,15 @@ describe("Atsumaru client cache and identity boundaries", () => {
     const chapters = await new AtsumaruClient(chapterTransport).getChapters(persistedSourceManga);
 
     assert.equal(chapters[1]?.version, "Archive Team");
-    assert.equal(chapters[1]?.sourceManga.mangaInfo.additionalInfo?.atsumaruScanlators, undefined);
+    assert.equal(chapters[1]?.sourceManga, persistedSourceManga);
+    assert.equal(
+      chapters[1]?.sourceManga.mangaInfo.additionalInfo,
+      persistedSourceManga.mangaInfo.additionalInfo,
+    );
     assert.deepEqual(chapterTransport.calls, [chaptersUrl]);
   });
 
-  it("strips corrupt private scanlator metadata from chapter bridge payloads", async () => {
+  it("ignores corrupt lookup metadata without removing it from the association", async () => {
     const transport = new FakeTransport();
     transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
     const sourceManga = manga("oJQ4o");
@@ -610,17 +664,21 @@ describe("Atsumaru client cache and identity boundaries", () => {
 
     assert.equal(
       Object.hasOwn(chapters[0]!.sourceManga.mangaInfo.additionalInfo ?? {}, "atsumaruScanlators"),
-      false,
+      true,
     );
+    assert.equal(chapters[0]?.sourceManga, sourceManga);
+    assert.ok(chapters.every(({ version }) => version === "Scanlation scan-manga-oJQ4o"));
   });
 
-  it("copies prototype-backed bridge manga fields onto returned chapters", async () => {
+  it("preserves prototype-backed bridge manga fields without copying", async () => {
     const secondaryTitles = ["Bridge Hero Alt"];
     const artworkUrls = ["https://cdn.atsu.moe/static/artwork/bridge.webp"];
     const tagGroups = [
       { id: "genres", title: "Genres", tags: [{ id: "action", title: "Action" }] },
     ];
     class BridgeAdditionalInfo {
+      [key: string]: string;
+
       get atsumaruScanlators(): string {
         return JSON.stringify({
           scanlators: [{ id: "scan-manga-oJQ4o", name: "Archive Team" }],
@@ -712,63 +770,21 @@ describe("Atsumaru client cache and identity boundaries", () => {
       ],
     });
 
-    const chapters = await new AtsumaruClient(transport).getChapters(
-      new BridgeSourceManga() as unknown as SourceManga,
-    );
+    const input = new BridgeSourceManga();
+    const chapters = await new AtsumaruClient(transport).getChapters(input);
 
     assert.equal(chapters.length, 1);
     assert.equal(chapters[0]?.version, "Archive Team");
-    for (const chapter of chapters) {
-      const { sourceManga } = chapter;
-      assert.equal(Object.prototype.propertyIsEnumerable.call(sourceManga, "mangaId"), true);
-      assert.equal(sourceManga.mangaId, "oJQ4o");
-      assert.equal(sourceManga.chapterCount, 7);
-      assert.equal(sourceManga.newChapterCount, 2);
-      assert.equal(sourceManga.unreadChapterCount, 3);
-      for (const field of [
-        "primaryTitle",
-        "thumbnailUrl",
-        "synopsis",
-        "secondaryTitles",
-        "contentRating",
-      ]) {
-        assert.equal(
-          Object.prototype.propertyIsEnumerable.call(sourceManga.mangaInfo, field),
-          true,
-          field,
-        );
-      }
-      assert.deepEqual(sourceManga.mangaInfo, {
-        thumbnailUrl: "https://cdn.atsu.moe/static/posters/bridge.webp",
-        synopsis: "Bridge synopsis.",
-        primaryTitle: "Bridge Hero",
-        secondaryTitles: ["Bridge Hero Alt"],
-        contentRating: ContentRating.MATURE,
-        contentType: "comic",
-        status: "Ongoing",
-        artist: "Bridge Artist",
-        author: "Bridge Author",
-        bannerUrl: "https://cdn.atsu.moe/static/banners/bridge.webp",
-        rating: 0.875,
-        tagGroups: [{ id: "genres", title: "Genres", tags: [{ id: "action", title: "Action" }] }],
-        artworkUrls: ["https://cdn.atsu.moe/static/artwork/bridge.webp"],
-        additionalInfo: { format: "comic" },
-        shareUrl: "https://atsu.moe/manga/oJQ4o",
-      });
-      assert.equal(
-        Object.hasOwn(sourceManga.mangaInfo.additionalInfo ?? {}, "atsumaruScanlators"),
-        false,
-      );
-      assert.equal(
-        Object.hasOwn(sourceManga.mangaInfo.additionalInfo ?? {}, "atsumaruCanonicalMangaId"),
-        false,
-      );
-    }
-    secondaryTitles.push("Mutated after load");
-    assert.deepEqual(chapters[0]?.sourceManga.mangaInfo.secondaryTitles, ["Bridge Hero Alt"]);
+    assert.equal(chapters[0]?.sourceManga, input);
+    assert.equal(chapters[0]?.sourceManga.mangaInfo, bridgeMangaInfo);
+    assert.equal(chapters[0]?.sourceManga.mangaInfo.secondaryTitles, secondaryTitles);
+    assert.equal(chapters[0]?.sourceManga.mangaInfo.artworkUrls, artworkUrls);
+    assert.equal(chapters[0]?.sourceManga.mangaInfo.tagGroups, tagGroups);
+    assert.deepEqual(Object.keys(input), []);
+    assert.deepEqual(Object.keys(bridgeMangaInfo), []);
   });
 
-  it("loads chapters when an own-enumerable format getter throws on a second read", async () => {
+  it("does not read an unrelated format getter during chapter enumeration", async () => {
     const transport = new FakeTransport();
     transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
     const sourceManga = manga("oJQ4o");
@@ -791,9 +807,98 @@ describe("Atsumaru client cache and identity boundaries", () => {
       chapters.map(({ chapterId }) => chapterId),
       ["h4j-gl", "wZieNneB", "_rmrsb"],
     );
+    assert.equal(formatReads, 0);
+    assert.equal(chapters[0]?.sourceManga.mangaInfo.additionalInfo, additionalInfo);
     assert.equal(chapters[0]?.sourceManga.mangaInfo.additionalInfo?.format, "comic");
     assert.equal(formatReads, 1);
   });
+
+  for (const additionalInfo of [
+    undefined,
+    {
+      [CANONICAL_MANGA_ID_KEY]: "../invalid",
+      atsumaruScanlators: "not-json",
+    },
+  ]) {
+    it(`retains restored input with ${additionalInfo ? "corrupt" : "no"} lookup metadata`, async () => {
+      const input: SourceManga = JSON.parse(JSON.stringify(manga("oJQ4o")));
+      input.mangaInfo.additionalInfo = additionalInfo;
+      const before = structuredClone(input);
+      const transport = new FakeTransport();
+      transport.bodies.set(
+        buildSearchUrl({ title: "Archive title", metadata: { adult: "all" } }, undefined, 1),
+        { found: 0, page: 1, hits: [] },
+      );
+      transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
+
+      const chapters = await new AtsumaruClient(transport).getChapters(input);
+
+      assert.equal(chapters.length, 3);
+      for (const chapter of chapters) {
+        assert.equal(chapter.sourceManga, input);
+        assert.equal(chapter.sourceManga.mangaInfo.additionalInfo, additionalInfo);
+        assert.equal(chapter.additionalInfo?.[CANONICAL_MANGA_ID_KEY], "oJQ4o");
+        assert.equal(chapter.version, "Scanlation scan-manga-oJQ4o");
+      }
+      assert.deepEqual(input, before);
+    });
+  }
+
+  it("preserves a frozen association and its nested metadata", async () => {
+    const sourceManga = manga("oJQ4o");
+    Object.freeze(sourceManga.mangaInfo.additionalInfo);
+    Object.freeze(sourceManga.mangaInfo.secondaryTitles);
+    Object.freeze(sourceManga.mangaInfo);
+    Object.freeze(sourceManga);
+    const before = structuredClone(sourceManga);
+    const transport = new FakeTransport();
+    transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
+
+    const chapters = await new AtsumaruClient(transport).getChapters(sourceManga);
+
+    assert.equal(chapters.length, 3);
+    assert.ok(chapters.every((chapter) => chapter.sourceManga === sourceManga));
+    assert.equal(
+      chapters[0]?.sourceManga.mangaInfo.additionalInfo,
+      sourceManga.mangaInfo.additionalInfo,
+    );
+    assert.deepEqual(sourceManga, before);
+  });
+
+  for (const concurrent of [false, true]) {
+    it(`retains each same-ID caller through ${concurrent ? "concurrent" : "warm"} raw caching`, async () => {
+      const transport = new FakeTransport();
+      transport.bodies.set(buildAllChaptersUrl("oJQ4o"), CHAPTERS_RESPONSE);
+      const client = new AtsumaruClient(transport);
+      const callers = ["First team", "Second team"].map((name) => {
+        const sourceManga = manga("oJQ4o");
+        sourceManga.mangaInfo.additionalInfo = {
+          [CANONICAL_MANGA_ID_KEY]: "oJQ4o",
+          atsumaruScanlators: JSON.stringify({ scanlators: [{ id: "scan-manga-oJQ4o", name }] }),
+        };
+        return sourceManga;
+      });
+      const [first, second] = callers;
+      assert.ok(first && second);
+      const before = structuredClone(callers);
+      const results = concurrent
+        ? await Promise.all(callers.map((input) => client.getChapters(input)))
+        : [await client.getChapters(first), await client.getChapters(second)];
+      for (const [index, chapters] of results.entries()) {
+        assert.equal(chapters.length, 3);
+        assert.ok(chapters.every((chapter) => chapter.sourceManga === callers[index]));
+        assert.ok(
+          chapters.every(({ version }) => version === ["First team", "Second team"][index]),
+        );
+      }
+      const fresh = await client.getChapters(first);
+      assert.notEqual(fresh[0], results[0]?.[0]);
+      assert.equal(fresh[0]?.sourceManga, first);
+      assert.equal(fresh[0]?.version, "First team");
+      assert.deepEqual(callers, before);
+      assert.deepEqual(transport.calls, [buildAllChaptersUrl("oJQ4o")]);
+    });
+  }
 
   it("evicts malformed chapter envelopes before retrying a corrected response", async () => {
     const transport = new FakeTransport();

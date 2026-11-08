@@ -45,18 +45,22 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 | Extension                                                                        | Status | Best for                                                                                         |
 | -------------------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
-| <img src="src/Atsumaru/static/icon.png" alt="" width="28"> **Atsumaru**          | 1.0.0  | Comics, novels, anonymous discovery, taxonomy search, and exported-library chapter compatibility |
-| <img src="src/DivaScans/static/icon.png" alt="" width="28"> **Diva Scans**       | 1.0.0  | Comics, novels, paginated histories, search filters, and account-aware chapter access            |
-| <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | 1.0.0  | Madara discovery/search, numeric-ID compatibility, and authorized image readers                  |
-| <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | 1.0.0  | Safe-mode catalog, range/rating/availability filters, and stable comic reader slugs              |
-| <img src="src/QiManga/static/icon.png" alt="" width="28"> **Qi Manga**           | 1.0.0  | Comics, novels, discovery, filters, lock visibility, and purchased-chapter access                |
-| <img src="src/RinkoComics/static/icon.png" alt="" width="28"> **Rinko Comics**   | 1.0.0  | Public comics, genre/sort search, nonce-paginated histories, and credential-neutral readers      |
-| <img src="src/Rokari/static/icon.png" alt="" width="28"> **Rokari**              | 1.0.0  | Anonymous catalogs, genre and keyword search, chapter histories, and comic readers               |
-| <img src="src/Thunderscans/static/icon.png" alt="" width="28"> **Thunder Scans** | 1.0.0  | Comics, novels, discovery/search, lock visibility, and purchased-chapter access                  |
-| <img src="src/ValirScans/static/icon.png" alt="" width="28"> **Valir Scans**     | 1.0.0  | Comics, novels, multi-page histories, route-safe readers, and first-party sessions               |
-| <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans**   | 1.0.0  | Comics, novels, filters, paid-state metadata, and purchased-chapter access                       |
+| <img src="src/Atsumaru/static/icon.png" alt="" width="28"> **Atsumaru**          | 1.1.0  | Comics, novels, anonymous discovery, taxonomy search, and exported-library chapter compatibility |
+| <img src="src/DivaScans/static/icon.png" alt="" width="28"> **Diva Scans**       | 1.0.1  | Comics, novels, paginated histories, search filters, and account-aware chapter access            |
+| <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | 1.0.1  | Madara discovery/search, numeric-ID compatibility, and authorized image readers                  |
+| <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | 1.0.1  | Safe-mode catalog, range/rating/availability filters, and stable comic reader slugs              |
+| <img src="src/QiManga/static/icon.png" alt="" width="28"> **Qi Manga**           | 1.0.1  | Comics, novels, discovery, filters, lock visibility, and purchased-chapter access                |
+| <img src="src/RinkoComics/static/icon.png" alt="" width="28"> **Rinko Comics**   | 1.0.1  | Public comics, genre/sort search, nonce-paginated histories, and credential-neutral readers      |
+| <img src="src/Rokari/static/icon.png" alt="" width="28"> **Rokari**              | 1.0.1  | Anonymous catalogs, genre and keyword search, chapter histories, and comic readers               |
+| <img src="src/Thunderscans/static/icon.png" alt="" width="28"> **Thunder Scans** | 1.0.1  | Comics, novels, discovery/search, lock visibility, and purchased-chapter access                  |
+| <img src="src/ValirScans/static/icon.png" alt="" width="28"> **Valir Scans**     | 1.0.1  | Comics, novels, multi-page histories, route-safe readers, and first-party sessions               |
+| <img src="src/VortexScans/static/icon.png" alt="" width="28"> **Vortex Scans**   | 1.0.1  | Comics, novels, filters, paid-state metadata, and purchased-chapter access                       |
 
 ### Atsumaru
+
+Atsumaru 1.1.0 preserves the app-provided manga association on every returned chapter, including restored records. Canonical reader routing stays separate from library IDs. The other nine extensions are at 1.0.1. This release also includes the shared NovelDash reader fixes for kind-prefixed comic and novel responses and text-record boundaries.
+
+Refresh the saved repository and update Atsumaru to 1.1.0 and the other installed extensions to 1.0.1, then refresh the chapter lists. Keep your existing library. No migration, reset, or backup restore is required. Native Paperback chapter persistence and display after this change have not been verified. The separate Vortex native display discrepancy remains unresolved.
 
 - All 13 anonymous manga discovery rails, live genres, exact Typesense sorting, pasted series URLs, and comic or novel search.
 - Include/exclude filters for 21 genres and 6,134 detailed tags, organized into 19 on-demand groups so the initial form stays fast.
@@ -135,7 +139,7 @@ Paperback applies profile visibility before listing repository sources. Rinko Co
 
 ### Updating from alpha
 
-Refresh the saved repository, update the installed extensions to **1.0.0**, then reopen Paperback. This release fixes a parser dependency's cold-start crash in the app's JavaScript runtime. Library and chapter IDs are unchanged; do not delete your library to update. If an extension still shows **UNLOADED**, report its version, Paperback version, and extension error/log output. An unloaded label alone does not identify its cause.
+Refresh the saved repository and install each extension's latest stable version, then reopen Paperback. Atsumaru is **1.1.0**. The other nine extensions are **1.0.1**. These versions include the shared NovelDash reader-envelope and text-record boundary fixes. The stable releases include a fix for a parser dependency's cold-start crash in the app's JavaScript runtime. Library and chapter IDs are unchanged; do not delete your library to update. If an extension still shows **UNLOADED**, report its version, Paperback version, and extension error/log output. An unloaded label alone does not identify its cause.
 
 ## Paperback themes
 

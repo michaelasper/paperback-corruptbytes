@@ -284,7 +284,10 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
         [CANONICAL_MANGA_ID_KEY]: mangaId,
       };
       const requestStart = chapterRequests.length;
+      const before = structuredClone(sourceManga);
       const chapters = await client.getChapters(sourceManga);
+      assert.ok(chapters.every((chapter) => chapter.sourceManga === sourceManga));
+      assert.deepEqual(sourceManga, before);
       assert.ok(
         chapters.some((chapter) => chapter.chapterId === chapterId),
         `${mangaId}/${chapterId} no longer resolves`,
@@ -355,7 +358,10 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
       fetchText: async (request) => JSON.stringify(await getCachedJson(request.url)),
     });
 
+    const before = structuredClone(legacy);
     const chapters = await client.getChapters(legacy, undefined, false);
+    assert.ok(chapters.every((chapter) => chapter.sourceManga === legacy));
+    assert.deepEqual(legacy, before);
     current.mangaInfo.additionalInfo = {
       ...current.mangaInfo.additionalInfo,
       [CANONICAL_MANGA_ID_KEY]: currentMangaId,
@@ -415,7 +421,10 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
     const client = new AtsumaruClient();
     for (const mangaId of ["68Fv", "N7JpR", "oJQ4o", "-aOD"]) {
       const manga = await client.getMangaDetails(mangaId);
+      const before = structuredClone(manga);
       const chapters = await client.getChapters(manga, undefined, true);
+      assert.ok(chapters.every((chapter) => chapter.sourceManga === manga));
+      assert.deepEqual(manga, before);
       const raw = record(rawResponse(buildAllChaptersUrl(mangaId))).chapters;
       assert.ok(Array.isArray(raw) && raw.length > 0 && raw.length <= 20_000);
       const rawChapters = raw.map((value: unknown) => {
@@ -476,6 +485,8 @@ describe("Atsumaru live anonymous contract", { skip: !live }, () => {
         new Set(rawChapters.map(({ number }) => number)),
       );
       assert.equal(collapsed.length, new Set(rawChapters.map(({ number }) => number)).size);
+      assert.ok([...since, ...collapsed].every((chapter) => chapter.sourceManga === manga));
+      assert.deepEqual(manga, before);
 
       let pages = 0;
       let paragraphs = 0;

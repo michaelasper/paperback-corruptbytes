@@ -49,7 +49,7 @@ printf '%s\n' "$doctor_status" > "$VERIFY_EVIDENCE/doctor.exit"
 test "$doctor_status" -eq 0 || exit "$doctor_status"
 ```
 
-It validates source IDs, versions, metadata, icons, JavaScript artifacts, and exact packaged theme bytes, then evaluates and initialises all ten bundles without Node/browser globals. It does not prove JavaScript freshness after source edits. If production files changed since Launch, rebuild before driving. For a server or browser, also perform the ownership/readiness check in its feature recipe. Never drive someone else's instance.
+It validates source IDs, versions, metadata, icons, JavaScript artifacts, and exact packaged theme bytes, then evaluates and initialises all ten bundles without Node/browser globals. It also executes the generated Atsumaru chapter and reader methods with fixture-backed transport to check app-owned associations and recovered routing. This offline check is separate from cold-start verification and does not prove native bridge acceptance. It does not prove JavaScript freshness after source edits. If production files changed since Launch, rebuild before driving. For a server or browser, also perform the ownership/readiness check in its feature recipe. Never drive someone else's instance.
 
 ## Drive
 

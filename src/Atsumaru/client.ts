@@ -217,71 +217,6 @@ const canonicalMangaIdFromChapter = (chapter: Chapter): string | undefined =>
 const titleIdentity = (value: string): string =>
   value.normalize("NFKC").replace(/[‘’]/g, "'").replace(/\s+/g, " ").trim().toLocaleLowerCase();
 
-const copyArrayValue = <T>(value: T): T => (Array.isArray(value) ? ([...value] as T) : value);
-
-const chapterSourceManga = (sourceManga: SourceManga): SourceManga => {
-  const mangaInfo = sourceManga.mangaInfo;
-  const storedAdditionalInfo = mangaInfo.additionalInfo;
-  // Every Chapter crosses the native bridge with its SourceManga. Copy by direct reads,
-  // which survive bridge objects whose fields are not own-enumerable. Drop private lookup
-  // metadata rather than returning the app-owned object or repeating it on every chapter.
-  let additionalInfo: Record<string, string> | undefined;
-  if (storedAdditionalInfo !== null && typeof storedAdditionalInfo === "object") {
-    additionalInfo = {};
-    for (const [key, value] of Object.entries(storedAdditionalInfo)) {
-      if (key === SCANLATOR_METADATA_KEY || key === CANONICAL_MANGA_ID_KEY) continue;
-      if (typeof value === "string") additionalInfo[key] = value;
-    }
-    if (!Object.hasOwn(additionalInfo, "format")) {
-      const format = storedAdditionalInfo.format;
-      if (typeof format === "string") {
-        additionalInfo.format = format;
-      }
-    }
-  }
-  const thumbnailUrl = mangaInfo.thumbnailUrl;
-  const synopsis = mangaInfo.synopsis;
-  const primaryTitle = mangaInfo.primaryTitle;
-  const secondaryTitles = mangaInfo.secondaryTitles;
-  const contentRating = mangaInfo.contentRating;
-  const contentType = mangaInfo.contentType;
-  const status = mangaInfo.status;
-  const artist = mangaInfo.artist;
-  const author = mangaInfo.author;
-  const bannerUrl = mangaInfo.bannerUrl;
-  const rating = mangaInfo.rating;
-  const tagGroups = mangaInfo.tagGroups;
-  const artworkUrls = mangaInfo.artworkUrls;
-  const shareUrl = mangaInfo.shareUrl;
-  const chapterCount = sourceManga.chapterCount;
-  const newChapterCount = sourceManga.newChapterCount;
-  const unreadChapterCount = sourceManga.unreadChapterCount;
-  const chapterMangaInfo: SourceManga["mangaInfo"] = {
-    thumbnailUrl,
-    synopsis,
-    primaryTitle,
-    secondaryTitles: copyArrayValue(secondaryTitles),
-    contentRating,
-    ...(contentType !== undefined && { contentType }),
-    ...(status !== undefined && { status }),
-    ...(artist !== undefined && { artist }),
-    ...(author !== undefined && { author }),
-    ...(bannerUrl !== undefined && { bannerUrl }),
-    ...(rating !== undefined && { rating }),
-    ...(tagGroups !== undefined && { tagGroups: copyArrayValue(tagGroups) }),
-    ...(artworkUrls !== undefined && { artworkUrls: copyArrayValue(artworkUrls) }),
-    ...(additionalInfo !== undefined && { additionalInfo }),
-    ...(shareUrl !== undefined && { shareUrl }),
-  };
-  return {
-    mangaId: sourceManga.mangaId,
-    mangaInfo: chapterMangaInfo,
-    ...(chapterCount !== undefined && { chapterCount }),
-    ...(newChapterCount !== undefined && { newChapterCount }),
-    ...(unreadChapterCount !== undefined && { unreadChapterCount }),
-  };
-};
-
 const ratingWeight = (value: AtsumaruRatingDocument | null): number => {
   if (value === null) return 1;
   return (
@@ -483,17 +418,15 @@ export class AtsumaruClient {
       (value) => value,
     );
     try {
-      return parseChapters(
-        chaptersValue,
-        chapterSourceManga(sourceManga),
-        scanlatorsFromManga(sourceManga),
-      ).map((chapter) => ({
-        ...chapter,
-        additionalInfo: {
-          ...chapter.additionalInfo,
-          [CANONICAL_MANGA_ID_KEY]: mangaId,
-        },
-      }));
+      return parseChapters(chaptersValue, sourceManga, scanlatorsFromManga(sourceManga)).map(
+        (chapter) => ({
+          ...chapter,
+          additionalInfo: {
+            ...chapter.additionalInfo,
+            [CANONICAL_MANGA_ID_KEY]: mangaId,
+          },
+        }),
+      );
     } catch (error: unknown) {
       this.chaptersCache.delete(chaptersUrl);
       throw error;

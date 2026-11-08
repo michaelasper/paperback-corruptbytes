@@ -4,7 +4,7 @@ export default {
   name: "Qi Manga",
   description:
     "Qi Manga comics and novels with complete discovery, frontend-supported filters, stable IDs, and first-party access to purchased chapters.",
-  version: "1.0.0",
+  version: "1.0.1",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.ADULT,

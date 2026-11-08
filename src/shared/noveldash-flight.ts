@@ -7,7 +7,7 @@ export interface NovelDashFlightDocument {
 }
 
 const FLIGHT_PUSH_PREFIX = "self.__next_f.push(";
-const TEXT_RECORD = /(?:^|\n)([\da-f]+):T([\da-f]+),/gi;
+const TEXT_RECORD = /^([\da-f]+):T([\da-f]+),/i;
 
 const flightChunks = (html: string): string[] => {
   const $ = load(html);
@@ -38,26 +38,39 @@ const utf8Prefix = (value: string, maximumBytes: number): { bytes: number; text:
   return { bytes, text: value.slice(0, end) };
 };
 
-const textReferencesFrom = (stream: string): ReadonlyMap<string, string> => {
-  const references = new Map<string, string>();
-  TEXT_RECORD.lastIndex = 0;
-  for (let match = TEXT_RECORD.exec(stream); match; match = TEXT_RECORD.exec(stream)) {
-    const id = match[1]?.toLowerCase();
-    const expectedBytes = Number.parseInt(match[2] ?? "", 16);
-    if (!id || !Number.isSafeInteger(expectedBytes) || expectedBytes < 0) continue;
-    const value = utf8Prefix(stream.slice(TEXT_RECORD.lastIndex), expectedBytes);
-    if (value.bytes === expectedBytes) {
-      references.set(id, value.text);
-      TEXT_RECORD.lastIndex += value.text.length;
-    }
-  }
-  return references;
-};
-
 export const parseNovelDashFlight = (html: string): NovelDashFlightDocument => {
-  const stream = flightChunks(html).join("");
-  if (!stream) throw new Error("The page did not contain a readable Next.js data stream.");
-  return { stream, textReferences: textReferencesFrom(stream) };
+  const rawStream = flightChunks(html).join("");
+  if (!rawStream) throw new Error("The page did not contain a readable Next.js data stream.");
+
+  const records: string[] = [];
+  const textReferences = new Map<string, string>();
+  let offset = 0;
+  while (offset < rawStream.length) {
+    const remaining = rawStream.slice(offset);
+    if (!/^[\da-f]+:T/i.test(remaining)) {
+      const newline = rawStream.indexOf("\n", offset);
+      const end = newline < 0 ? rawStream.length : newline + 1;
+      records.push(rawStream.slice(offset, end));
+      offset = end;
+      continue;
+    }
+
+    const header = TEXT_RECORD.exec(remaining);
+    const id = header?.[1]?.toLowerCase();
+    const expectedBytes = Number.parseInt(header?.[2] ?? "", 16);
+    if (!header || !id || !Number.isSafeInteger(expectedBytes)) {
+      throw new Error("The page contained an invalid Next.js text record.");
+    }
+    offset += header[0].length;
+    const value = utf8Prefix(rawStream.slice(offset), expectedBytes);
+    if (value.bytes !== expectedBytes) {
+      throw new Error("The page contained an incomplete Next.js text record.");
+    }
+    textReferences.set(id, value.text);
+    records.push("\0");
+    offset += value.text.length;
+  }
+  return { stream: records.join(""), textReferences };
 };
 
 const balancedJson = (source: string, start: number): string | undefined => {

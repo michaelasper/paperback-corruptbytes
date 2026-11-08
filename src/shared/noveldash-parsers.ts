@@ -525,7 +525,11 @@ export const parseNovelDashChapterDetails = (
   site: NovelDashSite,
 ): ChapterDetails => {
   const document = parseNovelDashFlight(html);
-  const data = extractNovelDashObject<NovelDashReaderData>(document, '{"chapter":{');
+  const readerPrefix =
+    ['{"kind":"novel","chapter":{', '{"kind":"comic","chapter":{'].find((prefix) =>
+      document.stream.includes(prefix),
+    ) ?? '{"chapter":{';
+  const data = extractNovelDashObject<NovelDashReaderData>(document, readerPrefix);
   const responseId = validateOpaqueId(data.chapter?.id);
   const expectedId =
     validateOpaqueId(chapter.additionalInfo?.upstreamId) ??

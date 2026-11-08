@@ -6,16 +6,19 @@
 
 - Preserve the exact app-provided Atsumaru manga association on returned chapters instead of copying it and removing lookup metadata. Keep canonical reader routing separate from the original library ID.
 - Retain scanlator labels, alternate translations, backfilled chapters, and stale-ID recovery without changing caller-owned metadata.
+- Include the shared NovelDash fixes from main. Read kind-prefixed comic and novel reader responses while retaining support for legacy responses.
+- Keep NovelDash text records separate from structured reader data. Reject malformed text records and preserve access-denial checks instead of treating JSON-like prose as a reader response.
 
 ### Verification
 
 - Add a regression that fails against the previous association behavior. Exercise restored, frozen, and prototype-backed inputs, unrelated getters, and same-ID cache callers.
 - Gate deterministic tests on a freshly compiled Atsumaru export. Gate bundle verification on the actual generated export with fixture-backed transport, real settings, association checks, and recovered reader routing. Keep the existing cold-start checks separate.
+- Retain the incoming NovelDash regressions for reader envelopes, text-record boundaries, Unicode byte lengths, and access denial, plus the Diva Scans live novel-reader check.
 - Native Paperback installation, chapter persistence, and display after this change are NOT RUN. JavaScript and HTTP checks do not prove native acceptance. The separate Vortex native display discrepancy remains unresolved.
 
 ### Updating
 
-Refresh the saved repository and update Atsumaru to **1.1.0**, then refresh its chapter list. Repository metadata is **1.1.0**. Other extensions remain **1.0.0**. Existing library and chapter IDs are unchanged. No library reset, migration, or backup restore is required. Dependencies are unchanged. The repository archive includes both Shiba and Dr Pepper.
+Refresh the saved repository and update Atsumaru to **1.1.0** and the other nine installed extensions to **1.0.1**, then refresh the chapter lists. Repository metadata is **1.1.0**. The nine **1.0.1** source versions are inherited from main. Existing library and chapter IDs are unchanged. No library reset, migration, or backup restore is required. Dependencies are unchanged. The repository archive includes both Shiba and Dr Pepper.
 
 ## 1.0.0
 

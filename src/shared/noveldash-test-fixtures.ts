@@ -109,13 +109,15 @@ export const seriesPageHtml = (options: SeriesPageFixtureOptions = {}): string =
   );
 };
 
-const comicReaderFixture = (
+export const comicReaderFixture = (
   protection: "active" | "dormant" | "none",
   purchased = false,
+  kindPrefixed = false,
 ): string => {
   const hasProtectionMetadata = protection !== "none";
   return flightHtml([
     `1c:${safeScriptJson({
+      ...(kindPrefixed ? { kind: "comic" } : {}),
       chapter: {
         id: "chapter-1",
         number: 1,
@@ -169,33 +171,39 @@ export const dormantProtectionComicReaderHtml = comicReaderFixture("dormant");
 export const purchasedComicReaderHtml = comicReaderFixture("none", true);
 export const protectedComicReaderHtml = comicReaderFixture("active");
 
-export const lockedReaderHtml = flightHtml([
-  `1c:${safeScriptJson({
-    chapter: {
-      id: "chapter-2",
-      number: 2,
-      title: "A paid chapter",
+export const lockedReaderFixture = (kindPrefixed = false): string =>
+  flightHtml([
+    `1c:${safeScriptJson({
+      ...(kindPrefixed ? { kind: "comic" } : {}),
+      chapter: {
+        id: "chapter-2",
+        number: 2,
+        title: "A paid chapter",
+        isLocked: true,
+        coinPrice: 50,
+        content: "",
+        pages: [
+          {
+            id: "page-1",
+            pageNumber: 1,
+            imageUrl: "https://media.fixture.example/series/route-slug/0002/locked.webp",
+          },
+        ],
+      },
+      isUnlocked: false,
       isLocked: true,
       coinPrice: 50,
-      content: "",
-      pages: [
-        {
-          id: "page-1",
-          pageNumber: 1,
-          imageUrl: "https://media.fixture.example/series/route-slug/0002/locked.webp",
-        },
-      ],
-    },
-    isUnlocked: false,
-    isLocked: true,
-    coinPrice: 50,
-  })}\n`,
-]);
+    })}\n`,
+  ]);
 
-export const novelReaderHtml = (content: string): string =>
+export const lockedReaderHtml = lockedReaderFixture();
+
+export const novelReaderHtml = (content: string, kindPrefixed = false): string =>
   flightHtml([
     ...textRecordChunks("68", content),
+    `1b:${safeScriptJson({ tts: true, chapter: { id: "novel-chapter-1", title: "TTS metadata" } })}\n`,
     `1c:${safeScriptJson({
+      ...(kindPrefixed ? { kind: "novel" } : {}),
       chapter: {
         id: "novel-chapter-1",
         number: 1,

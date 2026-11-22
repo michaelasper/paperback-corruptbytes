@@ -5,6 +5,13 @@ import type { Cookie } from "@paperback/types";
 
 import { THUNDER_COOKIE_STATE_KEY, ThunderCookieInterceptor } from "./cookies.js";
 
+/**
+ * Paperback's cookie getter materialises an absent expiry as its own
+ * `expires: undefined` key; assertions compare the declared cookie fields.
+ */
+const observed = (cookies: readonly Cookie[]): Cookie[] =>
+  cookies.map(({ expires, ...rest }) => (expires === undefined ? rest : { ...rest, expires }));
+
 const originalApplication = globalThis.Application;
 let secureState = new Map<string, unknown>();
 
@@ -36,8 +43,10 @@ describe("ThunderCookieInterceptor", () => {
     first.setCookie(cookie());
     const restored = new ThunderCookieInterceptor();
 
-    assert.deepEqual(secureState.get(THUNDER_COOKIE_STATE_KEY), [cookie()]);
-    assert.deepEqual(restored.cookies, [cookie()]);
+    assert.deepEqual(observed((secureState.get(THUNDER_COOKIE_STATE_KEY) as Cookie[]) ?? []), [
+      cookie(),
+    ]);
+    assert.deepEqual(observed(restored.cookies), [cookie()]);
   });
 
   it("injects cookies only into the exact source host", async () => {
@@ -70,6 +79,6 @@ describe("ThunderCookieInterceptor", () => {
 
     source.invalidateAuthCookies();
 
-    assert.deepEqual(source.cookies, [cookie({ name: "cf_clearance", value: "clear" })]);
+    assert.deepEqual(observed(source.cookies), [cookie({ name: "cf_clearance", value: "clear" })]);
   });
 });

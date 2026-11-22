@@ -6,6 +6,13 @@ import type { Cookie, Request, Response } from "@paperback/types";
 import { VORTEX_COOKIE_STATE_KEY, VortexCookieInterceptor } from "./cookies.js";
 import { VortexInterceptor } from "./interceptor.js";
 
+/**
+ * Paperback's cookie getter materialises an absent expiry as its own
+ * `expires: undefined` key; assertions compare the declared cookie fields.
+ */
+const observed = (cookies: readonly Cookie[]): Cookie[] =>
+  cookies.map(({ expires, ...rest }) => (expires === undefined ? rest : { ...rest, expires }));
+
 const originalApplication = globalThis.Application;
 const originalURL = globalThis.URL;
 
@@ -39,10 +46,12 @@ describe("VortexCookieInterceptor", () => {
     const first = new VortexCookieInterceptor();
     first.setCookie(sessionCookie());
 
-    assert.deepEqual(secureState.get(VORTEX_COOKIE_STATE_KEY), [sessionCookie()]);
+    assert.deepEqual(observed((secureState.get(VORTEX_COOKIE_STATE_KEY) as Cookie[]) ?? []), [
+      sessionCookie(),
+    ]);
 
     const restored = new VortexCookieInterceptor();
-    assert.deepEqual(restored.cookies, [sessionCookie()]);
+    assert.deepEqual(observed(restored.cookies), [sessionCookie()]);
   });
 
   it("rejects third-party and expired cookies when setting and restoring", () => {
@@ -56,7 +65,7 @@ describe("VortexCookieInterceptor", () => {
     const interceptor = new VortexCookieInterceptor();
     interceptor.setCookie(sessionCookie({ name: "another", domain: "example.com" }));
 
-    assert.deepEqual(interceptor.cookies, [sessionCookie()]);
+    assert.deepEqual(observed(interceptor.cookies), [sessionCookie()]);
   });
 
   it("rehydrates serialized secure-state expiry dates", () => {
@@ -192,7 +201,7 @@ describe("VortexCookieInterceptor", () => {
       new ArrayBuffer(0),
     );
 
-    assert.deepEqual(interceptor.cookies, [sessionCookie({ value: "new-session" })]);
+    assert.deepEqual(observed(interceptor.cookies), [sessionCookie({ value: "new-session" })]);
 
     interceptor.invalidateAuthCookies();
     const logoutRequest = await interceptor.interceptRequest({
@@ -241,7 +250,7 @@ describe("VortexCookieInterceptor", () => {
       new ArrayBuffer(0),
     );
 
-    assert.deepEqual(cookies.cookies, [sessionCookie({ value: "rotated-session" })]);
+    assert.deepEqual(observed(cookies.cookies), [sessionCookie({ value: "rotated-session" })]);
   });
 
   it("removes caller-supplied auth cookies before later interceptors see an untrusted host", async () => {

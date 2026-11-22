@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
-import type { Request } from "@paperback/types";
+import type { Cookie, Request } from "@paperback/types";
 
 import {
   AtsumaruCookieInterceptor,
   isAtsumaruCloudflareCookieName,
   isAtsumaruCookie,
 } from "./cookies.js";
+
+/**
+ * Paperback's cookie getter materialises an absent expiry as its own
+ * `expires: undefined` key; assertions compare the declared cookie fields.
+ */
+const observed = (cookies: readonly Cookie[]): Cookie[] =>
+  cookies.map(({ expires, ...rest }) => (expires === undefined ? rest : { ...rest, expires }));
 
 const originalApplication = globalThis.Application;
 let secureState = new Map<string, unknown>();
@@ -53,7 +60,7 @@ describe("Atsumaru secure cookies", () => {
     assert.equal(site.headers?.["x-paperback-atsumaru-cookie-generation"], "0");
     assert.deepEqual(cdn.cookies, { display: "wide" });
     assert.equal(cdn.headers?.["x-paperback-atsumaru-cookie-generation"], undefined);
-    assert.deepEqual(secureState.get("atsumaru.secure_cookies"), [
+    assert.deepEqual(observed((secureState.get("atsumaru.secure_cookies") as Cookie[]) ?? []), [
       { name: "cf_clearance", value: "ok", domain: ".atsu.moe", path: "/" },
     ]);
   });

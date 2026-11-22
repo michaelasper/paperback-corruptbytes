@@ -13,6 +13,7 @@ import { AtsumaruClient } from "../src/Atsumaru/client.js";
 import { DIVA_SCANS_SITE } from "../src/DivaScans/site.js";
 import { MadaraDexClient } from "../src/MadaraDex/client.js";
 import { MgekoClient } from "../src/Mgeko/client.js";
+import { PenguinSquad } from "../src/PenguinSquad/main.js";
 import { QiMangaClient } from "../src/QiManga/client.js";
 import { isNeutralMediaUrl as isQiMangaMediaUrl } from "../src/QiManga/network.js";
 import { RinkoComicsClient } from "../src/RinkoComics/client.js";
@@ -486,6 +487,28 @@ const probeRinkoComics = async (random: DeterministicRandom): Promise<ProbeStats
   );
 };
 
+const probePenguinSquad = async (random: DeterministicRandom): Promise<ProbeStats> => {
+  const sections = await PenguinSquad.getDiscoverSections();
+  const section = sections[0];
+  if (!section) throw new Error("Penguin Squad exposed no discovery section.");
+  const page = await PenguinSquad.getDiscoverSectionItems(section, {
+    page: random.pick([1, 2, 3]),
+  });
+  return probeSeries(
+    random,
+    "Penguin Squad",
+    page.items.flatMap((item) =>
+      item.type === "simpleCarouselItem" ? [{ mangaId: item.mangaId, title: item.title }] : [],
+    ),
+    async (mangaId) => {
+      const manga = await PenguinSquad.getMangaDetails(mangaId);
+      return { manga, chapters: await PenguinSquad.getChapters(manga) };
+    },
+    (chapter) => PenguinSquad.getChapterDetails(chapter),
+    (chapter) => chapter.additionalInfo?.["access"] === "public",
+  );
+};
+
 const probeRokari = async (random: DeterministicRandom): Promise<ProbeStats> => {
   const client = new RokariClient();
   const pages = [
@@ -606,6 +629,7 @@ const probes = [
   ["Diva Scans", (random: DeterministicRandom) => probeNovelDash(DIVA_SCANS_SITE, random)],
   ["MadaraDex", probeMadaraDex],
   ["Mgeko", probeMgeko],
+  ["Penguin Squad", probePenguinSquad],
   ["Qi Manga", probeQiManga],
   ["Rinko Comics", probeRinkoComics],
   ["Rokari", probeRokari],

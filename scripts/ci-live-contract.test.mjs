@@ -12,6 +12,7 @@ void test("CI gates reachable protocols and explicitly reports access-blocked pr
     "ATSUMARU_LIVE_TESTS",
     "DIVA_LIVE_TESTS",
     "MGEKO_LIVE_TESTS",
+    "PENGUIN_LIVE_TESTS",
     "QIMANGA_LIVE_TESTS",
     "RINKO_LIVE_TESTS",
     "ROKARI_LIVE_TESTS",
@@ -22,6 +23,7 @@ void test("CI gates reachable protocols and explicitly reports access-blocked pr
     assert.match(githubLive, new RegExp(`${environmentName}=1`));
   }
   assert.doesNotMatch(githubLive, /MADARADEX_LIVE_TESTS/);
+  assert.match(packageJson.scripts?.["test:live:penguin"] ?? "", /PENGUIN_LIVE_TESTS=1/);
   const allLive = packageJson.scripts?.["test:live"];
   assert.equal(typeof allLive, "string");
   for (const environmentName of [
@@ -29,6 +31,7 @@ void test("CI gates reachable protocols and explicitly reports access-blocked pr
     "DIVA",
     "MADARADEX",
     "MGEKO",
+    "PENGUIN",
     "QIMANGA",
     "RINKO",
     "ROKARI",

@@ -7,11 +7,13 @@ import { PenguinClient, type PenguinTransport } from "./client.js";
 import { PenguinSquadExtension, SECTIONS } from "./main.js";
 import { PenguinAccessError, type PenguinPageMetadata } from "./models.js";
 import { encodeChapterId, encodeSeriesId } from "./network.js";
+import { parseSeries } from "./parsers.js";
 import {
   PENGUIN_SERIES_SLUG,
   PENGUIN_SERIES_TITLE,
   catalogHtml,
   chapterHtml,
+  fixtureChapters,
   searchHtml,
   seriesHtml,
 } from "./test-fixtures.js";
@@ -212,19 +214,19 @@ describe("Penguin Squad extension series", () => {
     const chapters = await source.getChapters(manga);
     assert.deepEqual(
       chapters.map((chapter) => chapter.chapNum),
-      [4, 3, 2, 1],
+      [1, 2, 3, 4],
     );
     assert.deepEqual(
       chapters.map((chapter) => chapter.sortingIndex),
       [0, 1, 2, 3],
     );
-    assert.equal(chapters[0]?.title, "🔒 Premium • Synthetic Part 4");
-    assert.equal(chapters[1]?.title, "Synthetic Part 3");
-    assert.equal(chapters[1]?.chapterId, encodeChapterId(PENGUIN_SERIES_SLUG, publicChapterSlug));
-    assert.equal(chapters[1]?.publishDate?.toISOString(), "2026-01-03T00:00:00.000Z");
-    assert.equal(chapters[0]?.additionalInfo?.["access"], "locked");
-    assert.equal(chapters[1]?.additionalInfo?.["url"], publicChapterUrl);
-    assert.equal(chapters[1]?.sourceManga, manga);
+    assert.equal(chapters[3]?.title, "🔒 Premium • Synthetic Part 4");
+    assert.equal(chapters[2]?.title, "Synthetic Part 3");
+    assert.equal(chapters[2]?.chapterId, encodeChapterId(PENGUIN_SERIES_SLUG, publicChapterSlug));
+    assert.equal(chapters[2]?.publishDate?.toISOString(), "2026-01-03T00:00:00.000Z");
+    assert.equal(chapters[3]?.additionalInfo?.["access"], "locked");
+    assert.equal(chapters[2]?.additionalInfo?.["url"], publicChapterUrl);
+    assert.equal(chapters[2]?.sourceManga, manga);
   });
 
   it("filters dated chapters but keeps undated ones", async () => {
@@ -233,8 +235,72 @@ describe("Penguin Squad extension series", () => {
     const chapters = await source.getChapters(manga, new Date("2026-01-02T12:00:00.000Z"));
     assert.deepEqual(
       chapters.map((chapter) => chapter.chapNum),
-      [4, 3],
+      [3, 4],
     );
+  });
+
+  it("advances from chapter 281 to 282 and goes back to 280 by sorting index", async () => {
+    const chapters = [282, 280, 281].map((number) => ({
+      slug: `chapter-${number}-synthetic`,
+      number,
+      title: `Synthetic Part ${number}`,
+      premium: false,
+      publishedAt: `2026-01-0${number - 279}T00:00:00.000Z`,
+    }));
+    const source = extension({ [seriesUrl]: seriesHtml({ chapters }) });
+    const manga = await source.getMangaDetails(seriesId);
+    const history = await source.getChapters(manga);
+    const current = history.find((chapter) => chapter.chapNum === 281);
+    const index = current?.sortingIndex;
+    assert.ok(index !== undefined);
+    assert.equal(history.find((chapter) => chapter.sortingIndex === index + 1)?.chapNum, 282);
+    assert.equal(history.find((chapter) => chapter.sortingIndex === index - 1)?.chapNum, 280);
+  });
+
+  it("keeps full-history indices when filtering dates", async () => {
+    const chapters = fixtureChapters().map((chapter) => ({
+      ...chapter,
+      publishedAt: chapter.number === 4 ? "2026-01-01T00:00:00Z" : chapter.publishedAt,
+    }));
+    const source = extension({ [seriesUrl]: seriesHtml({ chapters }) });
+    const manga = await source.getMangaDetails(seriesId);
+    const full = await source.getChapters(manga);
+    const incremental = await source.getChapters(manga, new Date("2026-01-02T12:00:00Z"));
+    for (const chapter of incremental) {
+      assert.equal(
+        chapter.sortingIndex,
+        full.find((item) => item.chapterId === chapter.chapterId)?.sortingIndex,
+      );
+    }
+    assert.deepEqual(await source.getChapters(manga, new Date("invalid")), full);
+  });
+
+  it("keeps existing indices when a new chapter is appended without mutating cached records", async () => {
+    let series = parseSeries(seriesHtml(), seriesId);
+    const original = [...series.chapters];
+    Object.freeze(series.chapters);
+    const client = new PenguinClient(async () => {
+      throw new Error("unexpected request");
+    });
+    client.getSeries = async () => series;
+    const source = new PenguinSquadExtension(client);
+    const manga = await source.getMangaDetails(seriesId);
+    const full = await source.getChapters(manga);
+    assert.deepEqual(series.chapters, original);
+    series = {
+      ...series,
+      chapters: Object.freeze([
+        {
+          ...original[0]!,
+          chapterId: encodeChapterId(PENGUIN_SERIES_SLUG, "chapter-5-synthetic"),
+          number: 5,
+        },
+        ...original,
+      ]),
+    };
+    const appended = await source.getChapters(manga);
+    assert.deepEqual(appended.slice(0, full.length), full);
+    assert.equal(appended.at(-1)?.chapNum, 5);
   });
 
   it("rejects a source manga without a valid penguin ID", async () => {

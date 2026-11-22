@@ -12,6 +12,9 @@ import { parseComicChapter } from "../Atsumaru/parsers.js";
 import { DIVA_SCANS_SITE } from "../DivaScans/site.js";
 import { parseChapterDetails as madaraReader } from "../MadaraDex/parsers.js";
 import { parseChapterDetails as mgekoReader } from "../Mgeko/parsers.js";
+import { encodeChapterId, encodeSeriesId } from "../PenguinSquad/network.js";
+import { parseReader as penguinReader } from "../PenguinSquad/parsers.js";
+import { chapterHtml as penguinChapterHtml } from "../PenguinSquad/test-fixtures.js";
 import { parseChapterDetails as qiReader } from "../QiManga/parsers.js";
 import { parseChapterDetails as rinkoReader } from "../RinkoComics/parsers.js";
 import { parseChapterDetails as rokariReader } from "../Rokari/parsers.js";
@@ -42,7 +45,14 @@ const novelDashReader =
       site,
     );
 
-const readers: Record<string, { base: string; ordered: boolean | "strict"; read: Reader }> = {
+interface ReaderAdapter {
+  base: string;
+  ordered: boolean | "strict";
+  read: Reader;
+  novel?: boolean;
+}
+
+const readers: Record<string, ReaderAdapter> = {
   Atsumaru: {
     base: "https://cdn.atsu.moe/static/pages/",
     ordered: true,
@@ -111,6 +121,37 @@ const readers: Record<string, { base: string; ordered: boolean | "strict"; read:
         40,
         "Property Series Chapter 40",
       ),
+  },
+  PenguinSquad: {
+    base: "https://qdqgxwrdzpxpkvamufqp.supabase.co/storage/v1/object/public/covers/simulation/",
+    ordered: false,
+    novel: true,
+    read: (pages, chapter) => {
+      const seriesSlug = "simulation-series";
+      const chapterSlug = "chapter-1-simulation";
+      const reader = penguinReader(
+        penguinChapterHtml({
+          seriesSlug,
+          chapterSlug,
+          number: chapter.chapNum,
+          title: "Simulation",
+          paragraphs: pages.length > 0 ? ["Synthetic simulation paragraph."] : [],
+          notice: pages.length > 0,
+          images: pages.map(({ url }) => url),
+        }),
+        {
+          seriesId: encodeSeriesId(seriesSlug),
+          chapterId: encodeChapterId(seriesSlug, chapterSlug),
+        },
+        { number: chapter.chapNum },
+      );
+      return {
+        id: encodeChapterId(seriesSlug, chapterSlug),
+        mangaId: encodeSeriesId(seriesSlug),
+        type: "html",
+        html: reader.html,
+      };
+    },
   },
   Rokari: {
     base: "https://rokaricomics.com/wp-content/uploads/manga/series/",
@@ -183,6 +224,19 @@ for (const [id, adapter] of Object.entries(readers)) {
               async () => adapter.read([...pages].reverse(), chapter),
               /invalid chapter image/,
             );
+          }
+          if (adapter.novel) {
+            assert.equal(result.type, "html");
+            if (!("html" in result)) throw new Error(`${id}: novel reader returned no HTML.`);
+            let cursor = 0;
+            for (const url of expected) {
+              const position = result.html.indexOf(url, cursor);
+              if (position < cursor) throw new Error(`${id}: reader lost page order for ${url}.`);
+              cursor = position + url.length;
+            }
+            assert.doesNotMatch(result.html, /<script|onerror=/i);
+            await assert.rejects(async () => adapter.read([], chapter));
+            continue;
           }
           assert.ok("pages" in result);
           assert.deepEqual(result.pages, expected);

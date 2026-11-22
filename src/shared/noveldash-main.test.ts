@@ -26,6 +26,13 @@ import type { NovelDashSearchMetadata } from "./noveldash-models.js";
 import type { ParsedNovelDashCatalog } from "./noveldash-parsers.js";
 import { NOVELDASH_TEST_SITE } from "./noveldash-test-fixtures.js";
 
+/**
+ * Paperback's cookie getter materialises an absent expiry as its own
+ * `expires: undefined` key; assertions compare the declared cookie fields.
+ */
+const observed = (cookies: readonly Cookie[]): Cookie[] =>
+  cookies.map(({ expires, ...rest }) => (expires === undefined ? rest : { ...rest, expires }));
+
 const originalApplication = globalThis.Application;
 let state = new Map<string, unknown>();
 let secureState = new Map<string, unknown>();
@@ -253,6 +260,9 @@ describe("NovelDashExtension", () => {
     );
 
     assert.equal(client.invalidations, 1);
-    assert.deepEqual(secureState.get("fixture_scans.secure_cookies"), [cookies[0]]);
+    assert.deepEqual(
+      observed((secureState.get("fixture_scans.secure_cookies") as Cookie[]) ?? []),
+      [cookies[0]],
+    );
   });
 });

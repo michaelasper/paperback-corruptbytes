@@ -17,6 +17,13 @@ const cookie = (overrides: Partial<Cookie> = {}): Cookie => ({
   ...overrides,
 });
 
+/**
+ * Paperback's cookie getter materialises an absent expiry as its own
+ * `expires: undefined` key; assertions compare the declared cookie fields.
+ */
+const observed = (cookies: readonly Cookie[]): Cookie[] =>
+  cookies.map(({ expires, ...rest }) => (expires === undefined ? rest : { ...rest, expires }));
+
 const isAcceptedCookie = (value: Cookie): boolean => {
   const domain = value.domain.trim().replace(/^\.+/, "").toLowerCase();
   return domain === "reader.example" || domain === "api.reader.example";
@@ -98,7 +105,7 @@ describe("SecureCookieInterceptor", () => {
           cookie({ name: "reader_session_persistent" }),
         ]);
 
-        assert.deepEqual(source.cookies, [cookie({ name: "reader_session_persistent" })]);
+        assert.deepEqual(observed(source.cookies), [cookie({ name: "reader_session_persistent" })]);
         const request = await source.interceptRequest({
           url: "https://api.reader.example/profile",
           method: "GET",
@@ -231,7 +238,7 @@ describe("SecureCookieInterceptor", () => {
       new ArrayBuffer(0),
     );
 
-    assert.deepEqual(source.cookies, [cookie()]);
+    assert.deepEqual(observed(source.cookies), [cookie()]);
   });
 
   it("applies filtering, deletion, replacement, blocking, and bounds atomically in batches", () => {
@@ -331,7 +338,7 @@ describe("SecureCookieInterceptor", () => {
       new ArrayBuffer(0),
     );
 
-    assert.deepEqual(source.cookies, [cookie({ value: "new" })]);
+    assert.deepEqual(observed(source.cookies), [cookie({ value: "new" })]);
   });
 
   it("binds injected cookies to the generation captured before its async boundary", async () => {
@@ -359,7 +366,7 @@ describe("SecureCookieInterceptor", () => {
       },
       new ArrayBuffer(0),
     );
-    assert.deepEqual(source.cookies, [cookie({ value: "new" })]);
+    assert.deepEqual(observed(source.cookies), [cookie({ value: "new" })]);
   });
 
   it("rejects missing and noncanonical response generation markers", async () => {
@@ -391,7 +398,7 @@ describe("SecureCookieInterceptor", () => {
 
     source.invalidateSensitiveCookies();
 
-    assert.deepEqual(source.cookies, [cookie({ name: "cf_clearance", value: "clear" })]);
+    assert.deepEqual(observed(source.cookies), [cookie({ name: "cf_clearance", value: "clear" })]);
   });
 
   it("bounds restored and response cookies by count and aggregate bytes", async () => {

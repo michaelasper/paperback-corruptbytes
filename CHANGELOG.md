@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.2.0
+
+### Added
+
+- Penguin Squad (`src/PenguinSquad`, 1.0.0) for translated novels: one `All novels` catalog rail over real `/novels?page=N` server pages, `/search?q=` keyword search, pasted series and chapter URLs, complete chapter histories, and sanitized public novel readers.
+- Chapter identity and access come from the series page's structured chapter records, corroborated by that page's chapter links and declared totals. Premium, unverified, missing, malformed, and conflicting records never default to public.
+- Public reads re-read the series records before fetching a chapter, then independently refuse a page that still carries a sign-in or unlock gate, a clipped preview wrapper, or a mismatched canonical, JSON-LD, or series identity.
+- Covers and in-reader images are limited to the observed media host; the shared HTML sanitizer removes unsafe markup while retaining chapter prose and the site's translation attribution.
+
+### Changed
+
+- Every pre-existing source advances a patch version, Atsumaru to `1.1.1` and the other nine to `1.0.2`, because this release changes the shipped bundle bytes at the same source version. Nine bundles now embed the `alpha.95` cookie interceptor semantics (persist on set, delete expired cookies, materialise `expires`) and all bundles are rebuilt by rolldown 1.3.3. Penguin Squad ships at `1.0.0` and the repository is `1.2.0`.
+
+### Verification
+
+- Deterministic suites cover 60-card catalog continuation, terminal and empty pages, recommendation-rail exclusion, search echo binding, duplicate and conflicting chapter records, declared count mismatches, forged pagination links, every access-gate variant, and media allowlisting. Synthetic fixtures only; no chapter prose is committed.
+- Compiled-export tests rebuild `src/PenguinSquad/main.ts` with rolldown and drive chapter association, catalog pagination, search, and premium refusal through the generated bundle.
+- `npm run test:live:penguin` traverses the live catalog to its terminal page, checks the requested series' relational chapter counts and chapter 281 reader HTML, and refuses the currently premium chapter without logging prose. Penguin Squad is registered in `npm run test:live`, in randomized live probes, and in the GitHub-runner live job.
+- Dependencies: `@paperback/toolchain` and `@paperback/types` move to `1.0.0-alpha.95` (the `alpha` dist-tag; the `latest` tag still points at the older `alpha.64`), `oxfmt` to 0.79.0, `oxlint` to 1.94.0, `oxlint-tsgolint` to 7.0.2008, and `rolldown` to 1.3.3, with 68 transitive packages refreshed inside their parents' ranges. `npm audit` reports zero vulnerabilities after these compatible updates. Optional and transitive updates remain outside this sweep.
+- The `alpha.95` cookie interceptor getter now materialises an absent `expires` as its own key. Five existing cookie suites compare that object shape directly, so their assertions normalise the materialised key; the adapter behaviour and persisted fields are unchanged.
+- Native Paperback installation, rendering, and progress persistence were NOT RUN, and no native evidence is claimed.
+
+### Updating
+
+Refresh the saved repository, update Atsumaru to **1.1.1**, Penguin Squad to **1.0.0**, and the other nine extensions to **1.0.2**, then reopen Paperback. Library and chapter IDs are unchanged; no library reset, migration, or backup restore is required.
+
 ## 1.1.0
 
 ### Fixed

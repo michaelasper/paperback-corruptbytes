@@ -1,5 +1,12 @@
 # Changelog
 
+## Penguin Squad 1.0.1
+
+### Fixed
+
+- Advance to the next chapter in reading order instead of the previous chapter. Assign sorting indices over the full chronological history before date filtering so incremental refreshes retain the same indices.
+- Preserve chapter IDs, manga association, access labels, dates, and reader behavior. Refresh the chapter list after updating. Native Paperback navigation and persisted progress have not been verified.
+
 ## 1.2.0
 
 ### Added

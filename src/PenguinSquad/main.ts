@@ -213,12 +213,10 @@ export class PenguinSquadExtension implements ExtensionImpl<typeof PenguinSquadC
     const seriesId = sourceMangaId(sourceManga);
     const series = await this.client.getSeries(seriesId);
     const since = sinceDate && !Number.isNaN(sinceDate.getTime()) ? sinceDate.getTime() : undefined;
-    return series.chapters
-      .filter(
-        (chapter) =>
-          since === undefined ||
-          chapter.publishedAt === undefined ||
-          chapter.publishedAt.getTime() > since,
+    return [...series.chapters]
+      .sort(
+        (left, right) =>
+          left.number - right.number || left.chapterId.localeCompare(right.chapterId),
       )
       .map((chapter, sortingIndex): Chapter => ({
         chapterId: chapter.chapterId,
@@ -229,7 +227,13 @@ export class PenguinSquadExtension implements ExtensionImpl<typeof PenguinSquadC
         ...(chapter.publishedAt && { publishDate: chapter.publishedAt }),
         sortingIndex,
         additionalInfo: { access: chapter.access.kind, url: buildChapterUrl(chapter.chapterId) },
-      }));
+      }))
+      .filter(
+        (chapter) =>
+          since === undefined ||
+          chapter.publishDate === undefined ||
+          chapter.publishDate.getTime() > since,
+      );
   }
 
   async getChapterDetails(chapter: Chapter): Promise<ChapterDetails> {

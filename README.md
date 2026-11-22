@@ -49,7 +49,7 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 | <img src="src/DivaScans/static/icon.png" alt="" width="28"> **Diva Scans**       | 1.0.2  | Comics, novels, paginated histories, search filters, and account-aware chapter access            |
 | <img src="src/MadaraDex/static/icon.png" alt="" width="28"> **MadaraDex**        | 1.0.2  | Madara discovery/search, numeric-ID compatibility, and authorized image readers                  |
 | <img src="src/Mgeko/static/icon.png" alt="" width="28"> **Mgeko**                | 1.0.2  | Safe-mode catalog, range/rating/availability filters, and stable comic reader slugs              |
-| <img src="src/PenguinSquad/static/icon.png" alt="" width="28"> **Penguin Squad** | 1.0.0  | Translated novels, complete public catalogs, histories, and public-only readers                  |
+| <img src="src/PenguinSquad/static/icon.png" alt="" width="28"> **Penguin Squad** | 1.0.1  | Translated novels, complete public catalogs, histories, and public-only readers                  |
 | <img src="src/QiManga/static/icon.png" alt="" width="28"> **Qi Manga**           | 1.0.2  | Comics, novels, discovery, filters, lock visibility, and purchased-chapter access                |
 | <img src="src/RinkoComics/static/icon.png" alt="" width="28"> **Rinko Comics**   | 1.0.2  | Public comics, genre/sort search, nonce-paginated histories, and credential-neutral readers      |
 | <img src="src/Rokari/static/icon.png" alt="" width="28"> **Rokari**              | 1.0.2  | Anonymous catalogs, genre and keyword search, chapter histories, and comic readers               |
@@ -61,7 +61,7 @@ It is not a paywall bypass. Extensions never purchase, unlock, or fabricate acce
 
 Atsumaru 1.1.1 preserves the app-provided manga association on every returned chapter, including restored records. Canonical reader routing stays separate from library IDs. This release advances every pre-existing source by a patch version, Atsumaru to 1.1.1 and the other nine to 1.0.2, and adds Penguin Squad at 1.0.0. It also includes the shared NovelDash reader fixes for kind-prefixed comic and novel responses and text-record boundaries.
 
-Refresh the saved repository and update Atsumaru to 1.1.1, Penguin Squad to 1.0.0, and the other installed extensions to 1.0.2, then refresh the chapter lists. Keep your existing library. No migration, reset, or backup restore is required. Native Paperback chapter persistence and display after this change have not been verified. The separate Vortex native display discrepancy remains unresolved.
+Refresh the saved repository and update Atsumaru to 1.1.1, Penguin Squad to 1.0.1, and the other installed extensions to 1.0.2, then refresh the chapter lists. Keep your existing library. No migration, reset, or backup restore is required. Native Paperback chapter persistence and display after this change have not been verified. The separate Vortex native display discrepancy remains unresolved.
 
 - All 13 anonymous manga discovery rails, live genres, exact Typesense sorting, pasted series URLs, and comic or novel search.
 - Include/exclude filters for 21 genres and 6,134 detailed tags, organized into 19 on-demand groups so the initial form stays fast.
@@ -90,6 +90,8 @@ Refresh the saved repository and update Atsumaru to 1.1.1, Penguin Squad to 1.0.
 - Exact archived series and reader slugs, fractional chapter numbers, deterministic dates, and clean image-page ordering.
 
 ### Penguin Squad
+
+Penguin Squad 1.0.1 fixes backward chapter navigation and keeps chapter sorting indices stable between full and incremental refreshes. Refresh the chapter list after updating.
 
 - One verified `All novels` catalog rail built from real `/novels?page=N` server pages, keyword search from `/search?q=`, and pasted series or chapter URLs.
 - Chapter identity and access come from the series page's structured chapter records, corroborated by the same page's chapter links and declared totals.
@@ -147,7 +149,7 @@ Paperback applies profile visibility before listing repository sources. Rinko Co
 
 ### Updating from alpha
 
-Refresh the saved repository and install each extension's latest stable version, then reopen Paperback. Atsumaru is **1.1.1**, Penguin Squad is **1.0.0**, and the other nine extensions are **1.0.2**. These versions include the shared NovelDash reader-envelope and text-record boundary fixes. The stable releases include a fix for a parser dependency's cold-start crash in the app's JavaScript runtime. Library and chapter IDs are unchanged; do not delete your library to update. If an extension still shows **UNLOADED**, report its version, Paperback version, and extension error/log output. An unloaded label alone does not identify its cause.
+Refresh the saved repository and install each extension's latest stable version, then reopen Paperback. Atsumaru is **1.1.1**, Penguin Squad is **1.0.1**, and the other nine extensions are **1.0.2**. These versions include the shared NovelDash reader-envelope and text-record boundary fixes. The stable releases include a fix for a parser dependency's cold-start crash in the app's JavaScript runtime. Library and chapter IDs are unchanged; do not delete your library to update. If an extension still shows **UNLOADED**, report its version, Paperback version, and extension error/log output. An unloaded label alone does not identify its cause.
 
 ## Paperback themes
 

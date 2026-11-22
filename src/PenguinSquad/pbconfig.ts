@@ -4,7 +4,7 @@ export default {
   name: "Penguin Squad",
   description:
     "Penguin Squad translated novels with the complete public catalog, full chapter histories, and readable public chapters.",
-  version: "1.0.0",
+  version: "1.0.1",
   icon: "icon.png",
   language: "en",
   contentRating: ContentRating.ADULT,
